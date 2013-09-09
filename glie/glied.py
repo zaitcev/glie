@@ -4,6 +4,9 @@ import os
 import select
 import sys
 
+from glie import btoi
+import glie.xpdr
+
 TAG="glied"
 
 class AppError(Exception):
@@ -64,6 +67,37 @@ class Param:
 #        raise AppError("Cannot fsync %s" % fname)
 #    # not closing the fd, keep the lock
 #    return fd
+
+def scatter_bits(hex_chunk):
+    nibble_decoder_tab = {
+        '0': '0000',
+        '1': '0001',
+        '2': '0010',
+        '3': '0011',
+        '4': '0100',
+        '5': '0101',
+        '6': '0110',
+        '7': '0111',
+        '8': '1000',
+        '9': '1001',
+        'a': '1010',
+        'b': '1011',
+        'c': '1100',
+        'd': '1101',
+        'e': '1110',
+        'f': '1111'
+    }
+    ret_bits = ''
+    while len(hex_chunk):
+        nibble = hex_chunk[:1]
+        try:
+            ret_bits += nibble_decoder_tab[nibble]
+        except KeyError:
+            raise AppErrorNibble(nibble)
+        hex_chunk = hex_chunk[1:]
+    return ret_bits
+
+# Connection
 
 # Congratulations, you hand-rolled a yet another STEM dispatcher class.
 # Surely there must be a standard way to do this (evetlet?) XXX.
@@ -162,9 +196,51 @@ def rtl_adsb_parser_find_end(buf):
     p = str(buf)
     return p.find(";")
 
-def recv_msg_adsb(conn, msg):
-    # P3
-    print "message", msg
+def recv_msg_adsb(conn, msghex):
+    msg = scatter_bits(msghex)
+
+    df = msg[0:5]
+    if df == '10001':      # DF17
+        ca = msg[5:8]
+        if ca == '101':    # CA5
+            addr = msg[8:32]
+            typ = btoi(msg[32:37])
+            if 9 <= typ <= 18:     # Airborne Position with barometric altitude
+                # P3
+                print " airpos msg", msg
+                # See Doc.9871 C.2.7 (Fig.C-1)
+                qbit = btoi(msg[47])
+                if qbit:
+                    # [20:26][27:33] (bits M and Q removed)
+                    altstr = msg[40:47]+msg[48:52]
+                    alt = btoi(altstr) * 25 - 1000
+                    print "addr %x alt(Q=1) %d" % (btoi(addr), alt)
+                else:
+                    # Swap bits around, see Annex, 3.1.1.7.12.2.3
+                    # Squitter bit order:
+                    #    C1 A1 C2 A2 C4 A4 [no-M] B1 Q  B2 D2 B4 D4
+                    #    40 41 42 43 44 45        46 47 48 49 50 51
+                    # Transponder bit order:
+                    #    D2 D4 A1 A2 A4 B1 B2 B4 C1 C2 C4
+
+                    altstr = msg[49]+msg[51] + msg[41]+msg[43]+msg[45] + \
+                             msg[46]+msg[48]+msg[50] + msg[40]+msg[42]+msg[44]
+                    # XXX Trap KeyError here in case broadcast is invalid
+                    alt = glie.xpdr.code_to_alt(altstr)
+                    print "addr %x alt(Q=0) %d" % (btoi(addr), alt)
+            elif typ == 19:          # Airborne Velocity
+                # P3
+                print " DF17 CA5 Type 19"
+            else:
+                # P3
+                print " DF17 CA5 Type", typ
+        else:
+            # P3
+            print " DF17 CA", ca, btoi(ca)
+    else:
+        # P3
+        print " DF", df, btoi(df)
+    #print "message", msghex
 
 # Okay, this seems a little ad-hoc, but:
 #  returns:
@@ -237,8 +313,8 @@ def recv_event_adsb(conn):
         return
     conn.mbufs.append(mbuf)
     conn.rcvd += len(mbuf)
-    # P3
-    print "mbuf %d rcvd %d" % (len(mbuf), conn.rcvd)
+    ## P3
+    #print "mbuf %d rcvd %d" % (len(mbuf), conn.rcvd)
 
     while 1:
         buf = recv_event_adsb_parse(conn)
