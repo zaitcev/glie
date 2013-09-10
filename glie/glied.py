@@ -3,6 +3,7 @@
 import os
 import select
 import sys
+import termios
 
 from glie import btoi
 import glie.xpdr
@@ -22,8 +23,11 @@ class Param:
         skip = 0;  # Do skip=1 for full argv.
         #: GPS device path (no default, but commonly /dev/ttyS0 or /dev/gps)
         self.gps_dev_path = None
+        #: GPS tty baud rate, default 4800
+        self.gps_dev_speed = 4800
         #: Path to the rtl_adsb executible
         self.rtl_adsb_path = "/usr/bin/rtl_adsb"
+        speed = 0
         for i in range(len(argv)):
             if skip:
                 skip = 0
@@ -40,12 +44,24 @@ class Param:
                         raise ParamError("Parameter -r needs an argument")
                     self.rtl_adsb_path = argv[i+1];
                     skip = 1;
+                elif arg == "-s":
+                    if i+1 == len(argv):
+                        raise ParamError("Parameter -s needs an argument")
+                    speed = argv[i+1];
+                    skip = 1;
                 else:
                     raise ParamError("Unknown parameter " + arg)
             else:
                 raise ParamError("Parameters start with dashes")
-        if self.rtl_adsb_path == None:
+        if self.gps_dev_path == None:
             raise ParamError("Mandatory parameter -g is missing")
+        if self.rtl_adsb_path == None:
+            raise ParamError("Mandatory parameter -r is missing")
+        if speed != 0:
+            try:
+                self.gps_dev_speed = int(speed)
+            except ValueError:
+                raise ParamError("Invalid argument of parameter -s")
 
 ## Packing by hand is mega annoying, but oh well.
 #def write_pidfile(fname):
@@ -102,18 +118,13 @@ def scatter_bits(hex_chunk):
 # Congratulations, you hand-rolled a yet another STEM dispatcher class.
 # Surely there must be a standard way to do this (evetlet?) XXX.
 class Connection:
-    def __init__(self, sock, recv_proc):
+    def __init__(self, sock):
         """
         :param sock: Notionally a socket, but maybe a file-like or anything,
-                     as long as `recv_proc` knows how to read from it.
-        :param recv_proc: The procedure to call upon a receive event.
+                     as long as `recv_event` knows how to read from it.
         """
-        #self.challenge = None
         self.sock = sock           #: sock from instance parameter
-        self.recv_proc = recv_proc #: recv_proc from instance parameter
-        self.hup_proc = None       #: XXX TODO
         self.state = 0
-        #self.user = None
         self.mbufs = []
         self.rcvd = 0
     #def mark_login(self, username):
@@ -121,6 +132,8 @@ class Connection:
     #    self.user = username
     def mark_dead(self):
         self.state = 2
+    def hup_proc(self):  # TODO
+        raise NotImplementedError
 
 # skb
 # XXX split off into a module
@@ -290,39 +303,87 @@ def recv_event_adsb_parse(conn):
     print "too long (%s)" % str(buf)
     return ""
 
-# XXX do a class AdsbConnection(Connection): def recv_event(self), jeez
-# Receive an ADS-B message, using the low-level framing of "*xxxxxxxx;".
-def recv_event_adsb(conn):
-    # Always receive the socket data, or else the poll would loop.
-    # Except that real sockets do not support .read(), thank you Guido
-    #mbuf = conn.sock.recv(4096)
-    # Reading 4K does not return until filled
-    #mbuf = conn.sock.read(4096)
-    # No size is even worse: never returns anything!
-    #mbuf = conn.sock.read()
-    # A viable workaround: readline is responsive, albeit reading 1 byte at
-    # a time through the OS interface.
-    #mbuf = conn.sock.readline()
-    # Time to be brutal: just bypass the whole sorry bug-infested pile.
-    mbuf = os.read(conn.sock.fileno(), 4096)
-    if mbuf == None:
-        # Curious - does it happen? XXX
-        raise AppError("Received None")
-    if len(mbuf) == 0:
-        # EOF - we do nothing and hope for a proper event in the main loop.
-        return
-    conn.mbufs.append(mbuf)
-    conn.rcvd += len(mbuf)
-    ## P3
-    #print "mbuf %d rcvd %d" % (len(mbuf), conn.rcvd)
+class AdsbConnection(Connection):
 
-    while 1:
-        buf = recv_event_adsb_parse(conn)
-        if not buf:
-            break
-        recv_msg_adsb(conn, str(buf[1:-1]))
+    # Receive an ADS-B message, using the low-level framing of "*xxxxxxxx;".
+    def recv_event(self):
+        conn = self
+        # Always receive the socket data, or else the poll would loop.
 
-    return
+        # Except that real sockets do not support .read(), thank you Guido
+        #mbuf = self.sock.recv(4096)
+        # Reading 4K does not return until filled
+        #mbuf = self.sock.read(4096)
+        # No size is even worse: never returns anything!
+        #mbuf = self.sock.read()
+        # A viable workaround: readline is responsive, albeit reading 1 byte at
+        # a time through the OS interface. Of course it blocks until the whole
+        # line is received.
+        #mbuf = self.sock.readline()
+        # Time to be brutal: just bypass the whole sorry bug-infested pile.
+        mbuf = os.read(self.sock.fileno(), 4096)
+        if mbuf == None:
+            # This should not happen if poll() works correctly.
+            raise AppError("Received None")
+        if len(mbuf) == 0:
+            # EOF - we do nothing and hope for a proper event in the main loop.
+            return
+        self.mbufs.append(mbuf)
+        self.rcvd += len(mbuf)
+        ## P3
+        #print "mbuf %d rcvd %d" % (len(mbuf), self.rcvd)
+
+        while 1:
+            buf = recv_event_adsb_parse(self)
+            if not buf:
+                break
+            recv_msg_adsb(self, str(buf[1:-1]))
+
+class NmeaConnection(Connection):
+    # Receive an NMEA message
+    def recv_event(self):
+        mbuf = os.read(self.sock.fileno(), 4096)
+        if mbuf == None:
+            raise AppError("Received None from GPS")
+        if len(mbuf) == 0:
+            return
+        self.mbufs.append(mbuf)
+        self.rcvd += len(mbuf)
+
+        while 1:
+            # This is correct if we assume that one pull splits an mbuf once.
+            if len(self.mbufs) == 0:
+                return
+            mbuf = self.mbufs[-1]
+            nlx = mbuf.find('\n')
+            if nlx == -1:
+                return
+            line_length = self.rcvd - len(mbuf) + nlx + 1
+            buf = skb_pull(self.mbufs, line_length)
+            self.rcvd -= len(buf)
+            # P3
+            print "nmea line", buf
+
+# main()
+
+def open_gps_tty(tty_path, tty_speed):
+    if tty_speed == 4800:
+        speed = termios.B4800
+    elif tty_speed == 9600:
+        speed = termios.B9600
+    else:
+        raise AppError("Speed %s is invalid" % str(tty_speed))
+    # The parameters are a little convoluted, so we fetch an example,
+    # then modify it to suit. We don't know an equivalent of cfmakeraw()
+    # exists in Python (e.g. if tty.setraw() does everything necessary).
+    # In any case, NMEA protocol is such that cooked mode suits us just fine.
+    # Let's just kill echo, in case.
+    asock = open(tty_path, 'r')
+    ttyb = termios.tcgetattr(asock.fileno())
+    ttyb[3] = ttyb[3] & ~termios.ECHO
+    ttyb[4] = ttyb[5] = speed
+    termios.tcsetattr(asock.fileno(), termios.TCSAFLUSH, ttyb)
+    return asock
 
 def fork_rtl_adsb(prog_path):
     # XXX add rmmod
@@ -345,12 +406,11 @@ def fork_rtl_adsb(prog_path):
     # import signal
     # os.kill(prog_pid, signal.SIGTERM)
 
-    # XXX drop privileges
-
     os.close(pipe_w)
+    # What's strange, if we do the os.fdopen() like below, without
+    # os.O_NONBLOCK, then the resulting file-like object produces
+    # non-blocking reads (seen with strace). Magic.
     return os.fdopen(pipe_r, 'rb', 0)
-
-# main()
 
 def do(par):
 
@@ -365,12 +425,17 @@ def do(par):
     #lsock.listen(5)
     #poller.register(lsock.fileno(), select.POLLIN|select.POLLERR)
 
-    # XXX add GPS
-
-    asock = fork_rtl_adsb(par.rtl_adsb_path)
-    conn = Connection(asock, recv_event_adsb)
+    asock = open_gps_tty(par.gps_dev_path, par.gps_dev_speed)
+    conn = NmeaConnection(asock)
     connections[asock.fileno()] = conn
     poller.register(asock.fileno(), select.POLLIN|select.POLLERR)
+
+    asock = fork_rtl_adsb(par.rtl_adsb_path)
+    conn = AdsbConnection(asock)
+    connections[asock.fileno()] = conn
+    poller.register(asock.fileno(), select.POLLIN|select.POLLERR)
+
+    # XXX drop privileges
 
     while 1:
         # XXX exit here is no more sockets or rtl_adsb pipe is down (EOF)
@@ -399,7 +464,7 @@ def do(par):
                     poller.unregister(fd)
                     connections[fd] = None
                 elif event[1] & select.POLLIN:
-                    conn.recv_proc(conn)
+                    conn.recv_event()
                     if conn.state == 2:
                         # XXX Call conn.hup_proc() here and everywhere
                         poller.unregister(fd)
@@ -416,7 +481,8 @@ def main(args):
         par = Param(args)
     except ParamError as e:
         print >>sys.stderr, TAG+": Error in arguments:", e
-        print >>sys.stderr, "Usage:", TAG+" -f image"
+        print >>sys.stderr, "Usage:", TAG+" -g /dev/ttyUSB0 [-s 9600]"+\
+            " -r /usr/bin/rtl_adsb"
         sys.exit(1)
 
     try:
