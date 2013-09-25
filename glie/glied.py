@@ -238,9 +238,11 @@ def recv_msg_adsb(conn, msghex):
 
                     altstr = msg[49]+msg[51] + msg[41]+msg[43]+msg[45] + \
                              msg[46]+msg[48]+msg[50] + msg[40]+msg[42]+msg[44]
-                    # XXX Trap KeyError here in case broadcast is invalid
-                    alt = glie.xpdr.code_to_alt(altstr)
-                    print "addr %x alt(Q=0) %d" % (btoi(addr), alt)
+                    try:
+                        alt = glie.xpdr.code_to_alt(altstr)
+                        print "addr %x alt(Q=0) %d" % (btoi(addr), alt)
+                    except ValueError:
+                        print "addr %x invalid %s" % (btoi(addr), altstr)
             elif typ == 19:          # Airborne Velocity
                 # P3
                 print " DF17 CA5 Type 19"
@@ -299,8 +301,6 @@ def recv_event_adsb_parse(conn):
 
     buf = skb_pull(conn.mbufs, 31)
     conn.rcvd -= len(buf)
-    # P3
-    print "too long (%s)" % str(buf)
     return ""
 
 class AdsbConnection(Connection):
@@ -340,9 +340,12 @@ class AdsbConnection(Connection):
             recv_msg_adsb(self, str(buf[1:-1]))
 
 class NmeaConnection(Connection):
+
     # Receive an NMEA message
     def recv_event(self):
         mbuf = os.read(self.sock.fileno(), 4096)
+        # XXX sometimes throws:
+        # OSError: [Errno 11] Resource temporarily unavailable
         if mbuf == None:
             raise AppError("Received None from GPS")
         if len(mbuf) == 0:
@@ -373,20 +376,29 @@ def open_gps_tty(tty_path, tty_speed):
         speed = termios.B9600
     else:
         raise AppError("Speed %s is invalid" % str(tty_speed))
+    # Must open with os.O_NONBLOCK in case DTR is not connected.
+    fd = os.open(tty_path, os.O_RDONLY|os.O_NONBLOCK)
     # The parameters are a little convoluted, so we fetch an example,
     # then modify it to suit. We don't know an equivalent of cfmakeraw()
     # exists in Python (e.g. if tty.setraw() does everything necessary).
     # In any case, NMEA protocol is such that cooked mode suits us just fine.
     # Let's just kill echo, in case.
-    asock = open(tty_path, 'r')
-    ttyb = termios.tcgetattr(asock.fileno())
-    ttyb[3] = ttyb[3] & ~termios.ECHO
+    ttyb = termios.tcgetattr(fd)
+    ttyb[2] |= termios.CLOCAL
+    ttyb[3] &= ~termios.ECHO
     ttyb[4] = ttyb[5] = speed
-    termios.tcsetattr(asock.fileno(), termios.TCSAFLUSH, ttyb)
-    return asock
+    termios.tcsetattr(fd, termios.TCSAFLUSH, ttyb)
+    #  (void) fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) & ~O_NONBLOCK);
+    return os.fdopen(fd, 'rb', 0)
 
 def fork_rtl_adsb(prog_path):
-    # XXX add rmmod
+    # Unfortunately, rtl_adsb conflicts with DVB kernel modules.
+    # Fortunately, it produces a good printout in such case.
+    # On Fedora, do this:
+    #  echo 'blacklist dvb_usb_rtl28xxu' > /etc/modprobe.d/blacklist-dvb.conf
+    # Elsewhere, do this:
+    #  rmmod dvb_usb_rtl28xxu
+    # We may want to document this in the future.
 
     (pipe_r, pipe_w) = os.pipe()
 
@@ -438,7 +450,7 @@ def do(par):
     # XXX drop privileges
 
     while 1:
-        # XXX exit here is no more sockets or rtl_adsb pipe is down (EOF)
+        # XXX exit here if no more sockets or rtl_adsb pipe is down (EOF)
 
         # [(fd, ev)]
         events = poller.poll()
@@ -473,8 +485,8 @@ def do(par):
                     poller.unregister(fd)
                     connections[fd] = None
             else:
-                # P3
-                print "UNKNOWN connection"
+                print >>sys.stderr, TAG+": polled unknown fd", fd
+                os.close(fd)
 
 def main(args):
     try:
