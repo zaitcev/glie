@@ -32,10 +32,12 @@ hash_d = {
 }
 
 def code_to_alt(codestr):
-    # :param codestr: A string of 11 text digits '0' and '1' in the transponder
-    #                 order of D2,D4,A1,A2,A4,B1,B2,B4,C1,C2,C4
-    # :returns: Integer for altitude in feet
-    # :raises ValueError: if :codestr: is invalid
+    """
+    :param codestr: A string of 11 text digits '0' and '1' in the transponder
+                    order of D2,D4,A1,A2,A4,B1,B2,B4,C1,C2,C4
+    :returns: Integer for altitude in feet
+    :raises ValueError: if :codestr: is invalid
+    """
     try:
         dx = hash_d[codestr[0:2]]
         if dx % 2:
