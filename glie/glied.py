@@ -6,12 +6,11 @@ import sys
 import termios
 
 from glie import btoi
+from glie import AppError
 import glie.xpdr
+import glie.crc
 
 TAG="glied"
-
-class AppError(Exception):
-    pass
 
 # Param
 
@@ -214,20 +213,33 @@ def recv_msg_adsb(conn, msghex):
 
     df = msg[0:5]
     if df == '10001':      # DF17
+        addr = msg[8:32]
+
+        c_crc = glie.crc.esq_crc(msg[0:-24])
+        a_crc = msg[-24:]
+        if c_crc == a_crc:
+            crc_status = "OK"
+        else:
+            x_crc = glie.crc.xor(addr, c_crc)
+            if x_crc == a_crc:
+                crc_status = "aOK"
+            else:
+                crc_status = "Error"
+
         ca = msg[5:8]
         if ca == '101':    # CA5
-            addr = msg[8:32]
             typ = btoi(msg[32:37])
             if 9 <= typ <= 18:     # Airborne Position with barometric altitude
-                # P3
-                print " airpos msg", msg
+                ## P3
+                #print " airpos msg", msg
                 # See Doc.9871 C.2.7 (Fig.C-1)
                 qbit = btoi(msg[47])
                 if qbit:
                     # [20:26][27:33] (bits M and Q removed)
                     altstr = msg[40:47]+msg[48:52]
                     alt = btoi(altstr) * 25 - 1000
-                    print "addr %x alt(Q=1) %d" % (btoi(addr), alt)
+                    print "addr %x alt(Q=1) %d CRC:%s" % \
+                        (btoi(addr), alt, crc_status)
                 else:
                     # Swap bits around, see Annex, 3.1.1.7.12.2.3
                     # Squitter bit order:
@@ -240,18 +252,20 @@ def recv_msg_adsb(conn, msghex):
                              msg[46]+msg[48]+msg[50] + msg[40]+msg[42]+msg[44]
                     try:
                         alt = glie.xpdr.code_to_alt(altstr)
-                        print "addr %x alt(Q=0) %d" % (btoi(addr), alt)
+                        print "addr %x alt(Q=0) %d CRC:%s" % \
+                            (btoi(addr), alt, crc_status)
                     except ValueError:
-                        print "addr %x invalid %s" % (btoi(addr), altstr)
+                        print "addr %x invalid %s CRC:%s" % \
+                            (btoi(addr), altstr, crc_status)
             elif typ == 19:          # Airborne Velocity
                 # P3
-                print " DF17 CA5 Type 19"
+                print " DF17 CA5 Type 19 CRC:%s" % (crc_status,)
             else:
                 # P3
-                print " DF17 CA5 Type", typ
+                print " DF17 CA5 Type", typ, "CRC:%s" % (crc_status,)
         else:
             # P3
-            print " DF17 CA", ca, btoi(ca)
+            print " DF17 CA", ca, btoi(ca), "CRC:%s" % (crc_status,)
     else:
         # P3
         print " DF", df, btoi(df)
@@ -502,6 +516,7 @@ def main(args):
     except AppError, e:
         print >>sys.stderr, TAG+":", e
         sys.exit(1)
+    # except AppTraceback as e:  -- NO
     except KeyboardInterrupt:
         # The stock exit code is also 1 in case of signal, so we are not
         # making it any worse. Just stubbing the traceback.

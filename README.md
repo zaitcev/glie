@@ -4,4 +4,4 @@ glie
 ADS-B traffic
 
 TODO:
-* verify CRC (lots of back packets, apparently)
+* correct 1-bit errors by flipping every bit and re-checking CRC
