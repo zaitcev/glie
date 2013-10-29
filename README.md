@@ -4,7 +4,7 @@ glie
 An experiment in ADS-B traffic for the cockpit
 ----------------------------------------------
 
-Glie is a service that has accepts two inputs: ADS-B Extended Squitter
+Glie is a service that accepts two inputs: an ADS-B Extended Squitter
 packet stream and GPS position reports, then produces a traffic awareness
 presentation. The package stream comes in the familar asterisk-HEXDIGITS-
 semicolon format. The GPS positions come in NMEA format. The output is
@@ -14,6 +14,10 @@ anything from laptop to cellphone.
 Plans exist to package Glie into a largely self-contained box.
 But currently it requires a Linux computer, a 1090ES receiver,
 and a GPS.
+
+Any user of Glie assumes full responsibility for the consequences.
+Glie is not a substitute for See and Avoid practices. Glie can only
+display aircraft and obstructions that participate in ADS-B system.
 
 TODO:
 * find a better receiver than rtl_adsb (dump1090, hardare)
