@@ -2,6 +2,7 @@
 # Compute the Annex 10 extended squitter CRC
 #
 from glie import AppError, AppTraceback
+from glie import btoi
 
 # See Annex 10, v.4, 3.1.2.3.3.1.2 for the official squitter polynomial.
 # (25 bits of poly for 24 bits of checksum)
@@ -48,19 +49,17 @@ def crc(msgstr, poly):
     #print 'quot', quotient
     return rem
 
-# This operates on our usual strings with attendant conversions. Nasty.
-# Maybe one day we'll recode the whole thing with proper arrays.
+# This operates on our usual strings with attendant conversions.
 def xor(a, b):
-    zero = bytearray('0')
     length = len(a)
     if length != len(b):
         raise AppTraceback('xor on unequal length arguments')
-    av = bytearray(a)
-    bv = bytearray(b)
-    result = bytearray(length)
-    for i in xrange(0,length):
-        result[i] = (av[i] ^ bv[i]) + zero[0]
-    ret = result.decode('latin-1')
-    if isinstance(ret, unicode):
-        ret = ret.encode('ascii')
+    step = 20
+    ret = ""
+    for i in range(0,length,step):
+        len1 = min(length - i, step)
+        ai = btoi(a[i:i+len1])
+        bi = btoi(b[i:i+len1])
+        res = ai ^ bi
+        ret += format(res, "0>%db" % len1)
     return ret
