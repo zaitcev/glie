@@ -209,6 +209,11 @@ def rtl_adsb_parser_find_end(buf):
     return p.find(";")
 
 def recv_msg_adsb(msghex):
+    msglen = len(msghex)
+    if msglen != 14 and msglen != 28:
+        print >>sys.stderr, TAG+": bad message length", msglen
+        return
+
     msg = scatter_bits(msghex)
 
     df = msg[0:5]
@@ -279,7 +284,7 @@ def recv_msg_adsb(msghex):
 # Not sure how to code this pattern in an elegant way. Nested loops?
 def recv_event_adsb_parse(conn):
 
-    # Never seen a 56-bit packet thus far, but let's be prepared.
+    # Try to find a 56-bit packet first.
     if conn.rcvd < 16:
         return None
     buf = skb_pull_copy(conn.mbufs, 16)
@@ -301,7 +306,7 @@ def recv_event_adsb_parse(conn):
     if x != -1:
         buf = skb_pull(conn.mbufs, x)
         conn.rcvd -= len(buf)
-        return buf
+        return buf[1:]
 
     # Well, 112 bits it is, then.
     if conn.rcvd < 31:
@@ -311,7 +316,7 @@ def recv_event_adsb_parse(conn):
     if x != -1:
         buf = skb_pull(conn.mbufs, x)
         conn.rcvd -= len(buf)
-        return buf
+        return buf[1:]
 
     buf = skb_pull(conn.mbufs, 31)
     conn.rcvd -= len(buf)
@@ -349,9 +354,10 @@ class AdsbConnection(Connection):
 
         while 1:
             buf = recv_event_adsb_parse(self)
-            if not buf:
+            if buf is None:
                 break
-            recv_msg_adsb(str(buf[1:-1]))
+            if len(buf) != 0:
+                recv_msg_adsb(str(buf))
 
 class NmeaConnection(Connection):
 
