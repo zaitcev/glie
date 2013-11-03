@@ -208,7 +208,7 @@ def rtl_adsb_parser_find_end(buf):
     p = str(buf)
     return p.find(";")
 
-def recv_msg_adsb(conn, msghex):
+def recv_msg_adsb(msghex):
     msg = scatter_bits(msghex)
 
     df = msg[0:5]
@@ -351,7 +351,7 @@ class AdsbConnection(Connection):
             buf = recv_event_adsb_parse(self)
             if not buf:
                 break
-            recv_msg_adsb(self, str(buf[1:-1]))
+            recv_msg_adsb(str(buf[1:-1]))
 
 class NmeaConnection(Connection):
 
