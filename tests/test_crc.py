@@ -61,10 +61,4 @@ class TestCRC(testtools.TestCase):
         known = '010000100110110101010010'
         result = test(msg, tpoly, known) and result
 
-        ## dump1090 #1 - fails although dump1090 reports CRC (ok).
-        #msg = '00000000111000011001100110011000'
-        #tpoly = glie.crc.sqpoly
-        #known = '111010111011100010010001'
-        #result = test(msg, tpoly, known) and result
-
         self.assertTrue(result)
