@@ -12,6 +12,15 @@ import glie.crc
 
 TAG="glied"
 
+# Global state (I'm sorry, Dad)
+our_lat_n = True
+our_lat_deg = 0     # 0 means unset
+our_lat_min = 0.0
+our_lon_w = True
+our_lon_deg = 0     # 0 means unset
+our_lon_min = 0.0
+our_alt = None      # None means unset
+
 # Param
 
 class ParamError(Exception):
@@ -193,20 +202,7 @@ def skb_pull(mbufs, size):
        mbufs[0] = mbuf[x:]
     return v
 
-# events
-
-def rtl_adsb_parser_find_start(buf):
-    p = str(buf)
-    x = p.find("*")
-    if x == -1:
-        return -1
-    if x != 0 and p[x-1] != '\n':  # ok for '\r\n' line terminators as well
-        return -1
-    return x
-
-def rtl_adsb_parser_find_end(buf):
-    p = str(buf)
-    return p.find(";")
+# event ADS-B
 
 def recv_msg_adsb(msghex):
     msglen = len(msghex)
@@ -235,8 +231,6 @@ def recv_msg_adsb(msghex):
         if ca == '101':    # CA5
             typ = btoi(msg[32:37])
             if 9 <= typ <= 18:     # Airborne Position with barometric altitude
-                ## P3
-                #print " airpos msg", msg
                 # See Doc.9871 C.2.7 (Fig.C-1)
                 qbit = btoi(msg[47])
                 if qbit:
@@ -270,7 +264,7 @@ def recv_msg_adsb(msghex):
                 print " DF17 CA5 Type", typ, "CRC:%s" % (crc_status,)
         else:
             # P3
-            print " DF17 CA", ca, btoi(ca), "CRC:%s" % (crc_status,)
+            print " DF17 CA", btoi(ca), "CRC:%s" % (crc_status,)
     else:
         # P3
         print " DF", df, btoi(df)
@@ -322,6 +316,19 @@ def recv_event_adsb_parse(conn):
     conn.rcvd -= len(buf)
     return ""
 
+def rtl_adsb_parser_find_start(buf):
+    p = str(buf)
+    x = p.find("*")
+    if x == -1:
+        return -1
+    if x != 0 and p[x-1] != '\n':  # ok for '\r\n' line terminators as well
+        return -1
+    return x
+
+def rtl_adsb_parser_find_end(buf):
+    p = str(buf)
+    return p.find(";")
+
 class AdsbConnection(Connection):
 
     # Receive an ADS-B message, using the low-level framing of "*xxxxxxxx;".
@@ -359,6 +366,43 @@ class AdsbConnection(Connection):
             if len(buf) != 0:
                 recv_msg_adsb(str(buf))
 
+# event NMEA
+
+def recv_msg_nmea(linestr):
+    global our_lat_n, our_lat_deg, our_lat_min
+    global our_lon_w, our_lon_deg, our_lon_min
+    global our_alt
+
+    words = linestr.split(',')
+    # The first character is actually a framing protocol, most of the time '$'.
+    # First two characters of the sentence tag form a "talker ID".
+    # We assume 'GP' for now. Cound be 'IN' for panel GPS, or 'GN' for GLONASS.
+    if words[0] == '$GPGGA':
+        try:
+            lat = float(words[2])
+        except ValueError:
+            return
+        our_lat_n = (words[3] == 'N')
+        our_lat_deg = int(lat / 100.0)
+        our_lat_min = lat % 100.0
+        try:
+            lon = float(words[4])
+        except ValueError:
+            return
+        our_lon_w = (words[5] == 'W')
+        our_lon_deg = int(lon / 100.0)
+        our_lon_min = lon % 100.0
+        try:
+            alt = float(words[9])
+        except ValueError:
+            return
+        if words[10] == 'M':
+            alt *= 3.28084
+        our_alt = int(alt)
+    #elif words[0] == '$GPRMC':
+    else:
+        pass
+
 class NmeaConnection(Connection):
 
     # Receive an NMEA message
@@ -376,16 +420,22 @@ class NmeaConnection(Connection):
         while 1:
             # This is correct if we assume that one pull splits an mbuf once.
             if len(self.mbufs) == 0:
-                return
+                break
             mbuf = self.mbufs[-1]
             nlx = mbuf.find('\n')
             if nlx == -1:
-                return
+                break
             line_length = self.rcvd - len(mbuf) + nlx + 1
             buf = skb_pull(self.mbufs, line_length)
             self.rcvd -= len(buf)
-            # P3
-            print "nmea line", buf
+            ## P3
+            #print "nmea line", buf
+            recv_msg_nmea(str(buf))
+
+        ## P3
+        #print our_alt, \
+        #      'N' if our_lat_n else 'S', our_lat_deg, our_lat_min, \
+        #      'W' if our_lon_w else 'E', our_lon_deg, our_lon_min
 
 # main()
 
