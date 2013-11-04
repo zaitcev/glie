@@ -563,7 +563,7 @@ def main(args):
         par = Param(args)
     except ParamError as e:
         print >>sys.stderr, TAG+": Error in arguments:", e
-        print >>sys.stderr, "Usage:", TAG+" -g /dev/ttyUSB0 [-s 9600]"+\
+        print >>sys.stderr, "Usage:", TAG+" -g /dev/ttyUSB0 [-s 4800]"+\
             " -r /usr/bin/rtl_adsb"
         sys.exit(1)
 
