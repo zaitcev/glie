@@ -405,16 +405,13 @@ def recv_msg_nmea(linestr):
         latf = float(lat_deg) + (lat_min / 60.0)
         if words[3] != 'N':
             latf *= -1
-        our_lat = latf
 
         try:
             lon = float(words[4])
         except ValueError:
             return
         lonf = float(int(lon / 100.0)) + ((lon % 100.0) / 60.0)
-        if words[5] == 'W':
-            lonf *= -1
-        our_lon = lonf
+        if words[5] == 'W': lonf *= -1
 
         try:
             alt = float(words[9])
@@ -422,7 +419,10 @@ def recv_msg_nmea(linestr):
             return
         if words[10] == 'M':
             alt *= 3.28084
+
         our_alt = int(alt)
+        our_lat = latf
+        our_lon = lonf
     #elif words[0] == '$GPRMC':
     else:
         pass
