@@ -1,4 +1,5 @@
 # glied
+# Copyright (c) 2013 Pete Zaitcev <zaitcev@yahoo.com>
 
 import os
 import select
@@ -7,6 +8,7 @@ import termios
 
 from glie import btoi
 from glie import AppError
+from glie.utils import drop_privileges
 import glie.cpr
 import glie.crc
 import glie.xpdr
@@ -545,7 +547,7 @@ def do(par):
     connections[asock.fileno()] = conn
     poller.register(asock.fileno(), select.POLLIN|select.POLLERR)
 
-    # XXX drop privileges
+    drop_privileges('glie')
 
     while 1:
         # XXX exit here if no more sockets or rtl_adsb pipe is down (EOF)
