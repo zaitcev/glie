@@ -117,7 +117,7 @@ def scatter_bits(hex_chunk):
         try:
             ret_bits += nibble_decoder_tab[nibble]
         except KeyError:
-            raise AppErrorNibble(nibble)
+            raise AppError("Invalid nibble '%s'" % nibble)
         hex_chunk = hex_chunk[1:]
     return ret_bits
 
