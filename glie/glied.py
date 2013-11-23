@@ -593,19 +593,21 @@ def main(args):
         print >>sys.stderr, TAG+": Error in arguments:", e
         print >>sys.stderr, "Usage:", TAG+" -g /dev/ttyUSB0 [-s 4800]"+\
             " -r /usr/bin/rtl_adsb"
-        sys.exit(1)
+        return 1
 
     try:
         do(par)
     except AppError, e:
         print >>sys.stderr, TAG+":", e
-        sys.exit(1)
+        return 1
     # except AppTraceback as e:  -- NO
     except KeyboardInterrupt:
         # The stock exit code is also 1 in case of signal, so we are not
         # making it any worse. Just stubbing the traceback.
-        sys.exit(1)
+        return 1
+
+    return 0
 
 # http://utcc.utoronto.ca/~cks/space/blog/python/ImportableMain
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    sys.exit(main(sys.argv[1:]))
