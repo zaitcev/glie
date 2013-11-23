@@ -7,18 +7,16 @@ import termios
 
 from glie import btoi
 from glie import AppError
-import glie.xpdr
+import glie.cpr
 import glie.crc
+import glie.xpdr
 
 TAG="glied"
 
 # Global state (I'm sorry, Dad)
-our_lat_n = True
-our_lat_deg = 0     # 0 means unset
-our_lat_min = 0.0
-our_lon_w = True
-our_lon_deg = 0     # 0 means unset
-our_lon_min = 0.0
+# XXX replace with an App class
+our_lat = None      # None means unset
+our_lon = None      # None means unset
 our_alt = None      # None means unset
 
 # Param
@@ -231,32 +229,13 @@ def recv_msg_adsb(msghex):
         if ca == '101':    # CA5
             typ = btoi(msg[32:37])
             if 9 <= typ <= 18:     # Airborne Position with barometric altitude
-                # See Doc.9871 C.2.7 (Fig.C-1)
-                qbit = btoi(msg[47])
-                if qbit:
-                    # [20:26][27:33] (bits M and Q removed)
-                    altstr = msg[40:47]+msg[48:52]
-                    alt = btoi(altstr) * 25 - 1000
-                    print "addr %x alt(Q=1) %d CRC:%s" % \
-                        (btoi(addr), alt, crc_status)
-                else:
-                    # Swap bits around, see Annex, 3.1.1.7.12.2.3
-                    # Squitter bit order:
-                    #    C1 A1 C2 A2 C4 A4 [no-M] B1 Q  B2 D2 B4 D4
-                    #    40 41 42 43 44 45        46 47 48 49 50 51
-                    # Transponder bit order:
-                    #    D2 D4 A1 A2 A4 B1 B2 B4 C1 C2 C4
-
-                    altstr = msg[49]+msg[51] + msg[41]+msg[43]+msg[45] + \
-                             msg[46]+msg[48]+msg[50] + msg[40]+msg[42]+msg[44]
-                    try:
-                        alt = glie.xpdr.code_to_alt(altstr)
-                        print "addr %x alt(Q=0) %d CRC:%s" % \
-                            (btoi(addr), alt, crc_status)
-                    except ValueError:
-                        print "addr %x invalid %s CRC:%s" % \
-                            (btoi(addr), altstr, crc_status)
-            elif typ == 19:          # Airborne Velocity
+                qbit, alt = adsb_get_alt(msg)
+                if alt is None:
+                    alt = -1
+                lat, lon = adsb_get_pos(msg)
+                print "addr %x alt (Q=%d) %d lat %f lon %f CRC:%s" % \
+                       (btoi(addr), qbit, alt, lat, lon, crc_status)
+            elif typ == 19:        # Airborne Velocity
                 # P3
                 print " DF17 CA5 Type 19 CRC:%s" % (crc_status,)
             else:
@@ -269,6 +248,43 @@ def recv_msg_adsb(msghex):
         # P3
         print " DF", df, btoi(df)
     #print "message", msghex
+
+# See Doc.9871 C.2.7 (Fig.C-1) at p247
+def adsb_get_alt(msg):
+    """
+    :param msg: bit string of extended squitter for DF17
+    :returns: tuple of integers (qbit, altitude), altitude is in feet;
+              altitude may be None if msg is invalid
+    """
+    qbit = btoi(msg[47])
+    if qbit:
+        # [20:26][27:33] (bits M and Q removed)
+        altstr = msg[40:47]+msg[48:52]
+        alt = btoi(altstr) * 25 - 1000
+    else:
+        # Swap bits around, see Annex 10, 3.1.1.7.12.2.3
+        # Squitter bit order:
+        #    C1 A1 C2 A2 C4 A4 [no-M] B1 Q  B2 D2 B4 D4
+        #    40 41 42 43 44 45        46 47 48 49 50 51
+        # Transponder bit order:
+        #    D2 D4 A1 A2 A4 B1 B2 B4 C1 C2 C4
+
+        altstr = msg[49]+msg[51] + msg[41]+msg[43]+msg[45] + \
+                 msg[46]+msg[48]+msg[50] + msg[40]+msg[42]+msg[44]
+        try:
+            alt = glie.xpdr.code_to_alt(altstr)
+        except ValueError:
+            return (0, None)
+    return (qbit, alt)
+
+# Doc.9871 A.2.3.2.3: Lat/Long take 2*17 bits, CPR-encoded per C.2.6 at p233
+# 10s timer for combining odd/even
+def adsb_get_pos(msg):
+    if our_lat is None:
+        return (0.0, 0.0)  # XXX return a proper sentiel or raise
+    lat = glie.cpr.cpr_decode_lat(msg[53], msg[54:71], our_lat)
+    lon = glie.cpr.cpr_decode_lon(msg[53], msg[71:88], lat, our_lon)
+    return (lat, lon)
 
 # Okay, this seems a little ad-hoc, but:
 #  returns:
@@ -369,29 +385,37 @@ class AdsbConnection(Connection):
 # event NMEA
 
 def recv_msg_nmea(linestr):
-    global our_lat_n, our_lat_deg, our_lat_min
-    global our_lon_w, our_lon_deg, our_lon_min
-    global our_alt
+    global our_alt, our_lat, our_lon
 
     words = linestr.split(',')
     # The first character is actually a framing protocol, most of the time '$'.
     # First two characters of the sentence tag form a "talker ID".
     # We assume 'GP' for now. Cound be 'IN' for panel GPS, or 'GN' for GLONASS.
     if words[0] == '$GPGGA':
+        # The word looks like a float number, but it has degrees and minutes,
+        # with degrees multiplied by 100. E.g. "3501.78" means 35 degrees,
+        # 1 minute, and some seconds. The number of digits varies with GPS,
+        # so we convert it like a float for simplicity, then use math.
         try:
             lat = float(words[2])
         except ValueError:
             return
-        our_lat_n = (words[3] == 'N')
-        our_lat_deg = int(lat / 100.0)
-        our_lat_min = lat % 100.0
+        lat_deg = int(lat / 100.0)
+        lat_min = lat % 100.0
+        latf = float(lat_deg) + (lat_min / 60.0)
+        if words[3] != 'N':
+            latf *= -1
+        our_lat = latf
+
         try:
             lon = float(words[4])
         except ValueError:
             return
-        our_lon_w = (words[5] == 'W')
-        our_lon_deg = int(lon / 100.0)
-        our_lon_min = lon % 100.0
+        lonf = float(int(lon / 100.0)) + ((lon % 100.0) / 60.0)
+        if words[5] == 'W':
+            lonf *= -1
+        our_lon = lonf
+
         try:
             alt = float(words[9])
         except ValueError:
@@ -433,9 +457,7 @@ class NmeaConnection(Connection):
             recv_msg_nmea(str(buf))
 
         ## P3
-        #print our_alt, \
-        #      'N' if our_lat_n else 'S', our_lat_deg, our_lat_min, \
-        #      'W' if our_lon_w else 'E', our_lon_deg, our_lon_min
+        #print our_alt, our_lat, our_lon
 
 # main()
 

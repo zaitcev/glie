@@ -21,5 +21,6 @@ display aircraft and obstructions that participate in ADS-B system.
 
 TODO:
 * correct 1-bit errors by flipping every bit and re-checking CRC
-* parse short DF0 and DF4
 * collect stats about types of ignored packets
+* add tests for NMEA GPS inputs
+* add tests for CPR inputs
