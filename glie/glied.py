@@ -444,6 +444,12 @@ def open_gps_tty(tty_path, tty_speed):
         speed = termios.B4800
     elif tty_speed == 9600:
         speed = termios.B9600
+    elif tty_speed == 115200:
+        # Nobody should be crazy enough to run onboard RS-422 this fast.
+        # We allow this because AV8OR has a firmware bug that makes it
+        # clock 115200 after a sleep-resume. This way we don't need to
+        # reboot the GPS each time a debugging sessing starts.
+        speed = termios.B115200
     else:
         raise AppError("Speed %s is invalid" % str(tty_speed))
     # Must open with os.O_NONBLOCK in case DTR is not connected.
