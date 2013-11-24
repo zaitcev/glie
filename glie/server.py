@@ -2,7 +2,11 @@
 # Copyright (c) 2010-2012 OpenStack Foundation
 # Copyright (c) 2013 Pete Zaitcev <zaitcev@yahoo.com>
 
+import array
 import errno
+import io
+import math
+import png
 import time
 
 import eventlet
@@ -11,6 +15,8 @@ from eventlet.green import socket
 
 from glie.utils import drop_privileges
 
+W = 500
+H = 500
 
 class RestrictedGreenPool(GreenPool):
     """
@@ -27,20 +33,20 @@ class RestrictedGreenPool(GreenPool):
         if self._rgp_do_wait:
             self.waitall()
 
-
-class NullLogger():
-    """A no-op logger for eventlet wsgi."""
-
-    def write(self, *args):
-        #"Logs" the args to nowhere
-        pass
-
+#class NullLogger():
+#    """A no-op logger for eventlet wsgi."""
+#
+#    def write(self, *args):
+#        #"Logs" the args to nowhere
+#        pass
 
 def run_wsgi(conf_file, app_section):
 
     # It's pretty much inevitable that we'll need a configuration eventually.
     # Leave a stub for now.
     # conf = appconfig(conf_file, name=app_section)
+    ## P3
+    #conf = {'bind_port': 8080}
     conf = {}
 
     sock = get_socket(conf)
@@ -82,6 +88,8 @@ def application(environ, start_response):
     try:
         if path == None or path == "" or path == "/":
             output = do_root(environ, start_response)
+        elif path == "/display.png":
+            output = do_display(environ, start_response)
         else:
             # output = do_user(environ, start_response, path)
             raise App404Error("Only / exists")
@@ -108,6 +116,55 @@ def do_root(environ, start_response):
 
     start_response("200 OK", [('Content-type', 'text/plain')])
     return ["Glie\r\n"]
+
+def do_display(environ, start_response):
+    canvas = refresh_canvas(W, H)
+
+    fp = io.BytesIO()
+    # b = fp.getvalue() -- specific method of BytesIO
+
+    writer = png.Writer(W, H)
+    writer.write(fp, canvas)
+
+    fp.seek(0)
+    start_response("200 OK", [('Content-type', 'image/png')])
+    return fp
+
+def refresh_canvas(width, height):
+    """
+    Return the display canvas as a list of iteratables for PNG dumping.
+    XXX You do know that Python has 2-dimentional arrays, don't you?
+    """
+    c = black_canvas(W, H)
+    draw_white_circle(c, W/2, H/2, W/4)
+    return c
+
+def black_canvas(width, height):
+    c = list()
+    for i in xrange(height):
+        row = list()
+        for j in xrange(width):
+            row.append(0)
+            row.append(0)
+            row.append(0)
+        r = array.array('H')
+        r.fromlist(row)
+        c.append(r)
+    return c
+
+def draw_white_circle(c, x0, y0, r):
+    phy = 0
+    # We place dots at each 2 degrees because a denser line looks awful
+    # without a proper anti-aliasing.
+    for i in xrange(180):
+        phy = (float(i)/180.0) * (math.pi*2)
+        x = x0 + int(r * math.sin(phy))
+        y = y0 + int(r * math.cos(phy))
+        if 0 <= x < len(c[0])/3 and 0 <= y < len(c):
+            c[x][y*3 + 0] = 255
+            c[x][y*3 + 1] = 255
+            c[x][y*3 + 2] = 255
+    return 
 
 def get_socket(conf, default_port='80'):
     """Bind socket to bind ip:port in conf

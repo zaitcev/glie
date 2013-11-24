@@ -24,3 +24,4 @@ TODO:
 * collect stats about types of ignored packets
 * add tests for NMEA GPS inputs
 * add tests for CPR inputs
+* https://bugzilla.redhat.com/show_bug.cgi?id=810376  python-pypng review

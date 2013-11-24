@@ -38,4 +38,4 @@ To run in-place, change to the top of Glie tree and do this:
 
 # PYTHONPATH=$(pwd) bin/glied -g /dev/ttyUSB0 \
    -r /home/zaitcev/radio/rtl_adsb.sh -s 9600
-# PYTHONPATH=$(pwd) bin/glie-server
+# PYTHONPATH=$(pwd) bin/glie-server /dev/null
