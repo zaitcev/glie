@@ -1,5 +1,6 @@
 #
 # Look up transponder altitude code and return the altitude.
+# Copyright (c) 2013 Pete Zaitcev <zaitcev@yahoo.com>
 #
 
 # A Gray group of bits A (A1, A2, A4). Same table is for group B.

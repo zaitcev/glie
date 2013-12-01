@@ -1,5 +1,6 @@
 #
 # Compact Position Reporting
+# Copyright (c) 2013 Pete Zaitcev <zaitcev@yahoo.com>
 #
 # See Annex 10 Chapter IV for generics.
 # Doc 9871 (DO-260B) has packet layouts and formulas.

@@ -1,5 +1,6 @@
 #
 # Compute the Annex 10 extended squitter CRC
+# Copyright (c) 2013 Pete Zaitcev <zaitcev@yahoo.com>
 #
 from glie import AppError, AppTraceback
 from glie import btoi
