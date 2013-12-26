@@ -28,3 +28,10 @@ class TestCraftBase(testtools.TestCase):
         tgt.locadd((0.0, 1, 0.0, 0.0))
         tgt.locadd((0.0, 2, 0.0, 0.0))
         self.assertEquals(len(tgt.locv), 1)
+
+    #def test_base_prune(self):
+    #    addr = "000100010001000100010001"
+    #    base = glie.craftbase.CraftBase()
+    #    base.update(addr, (100.0, 1000, 36.0, 25.0))
+    #    with mock.patch(time.time()):
+    #        base.prune(10)

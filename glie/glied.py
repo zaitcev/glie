@@ -1,25 +1,39 @@
 # glied
 # Copyright (c) 2013 Pete Zaitcev <zaitcev@yahoo.com>
 
+import json
 import os
 import select
 import sys
 import termios
+import time
 
 from glie import btoi
 from glie import AppError
 from glie.utils import drop_privileges
 import glie.cpr
+import glie.craftbase
 import glie.crc
 import glie.xpdr
 
 TAG="glied"
+
+# Length of the time-based polling for things like writing out the craftbase.
+FRAME=1
 
 # Global state (I'm sorry, Dad)
 # XXX replace with an App class
 our_lat = None      # None means unset
 our_lon = None      # None means unset
 our_alt = None      # None means unset
+
+# Ultimately we aim to know where the nose of the ship is pointing
+# and orient the map accordingly. This is important for e.g. a helicopter,
+# and may be significant in case of side winds for slower airplanes.
+# But until we can get AHARS data, we have to use workarounds.
+our_nose = 30
+
+craft = glie.craftbase.CraftBase()
 
 # Param
 
@@ -35,6 +49,8 @@ class Param:
         self.gps_dev_speed = 4800
         #: Path to the rtl_adsb executible
         self.rtl_adsb_path = "/usr/bin/rtl_adsb"
+        #: Output file path
+        self.output_path = "/tmp/glie-out.json"
         speed = 0
         for i in range(len(argv)):
             if skip:
@@ -45,17 +61,20 @@ class Param:
                 if arg == "-g":
                     if i+1 == len(argv):
                         raise ParamError("Parameter -g needs an argument")
-                    self.gps_dev_path = argv[i+1];
+                    self.gps_dev_path = argv[i+1]
+                    skip = 1;
+                elif arg == "-o":
+                    self.output_path = argv[i+1]
                     skip = 1;
                 elif arg == "-r":
                     if i+1 == len(argv):
                         raise ParamError("Parameter -r needs an argument")
-                    self.rtl_adsb_path = argv[i+1];
+                    self.rtl_adsb_path = argv[i+1]
                     skip = 1;
                 elif arg == "-s":
                     if i+1 == len(argv):
                         raise ParamError("Parameter -s needs an argument")
-                    speed = argv[i+1];
+                    speed = argv[i+1]
                     skip = 1;
                 else:
                     raise ParamError("Unknown parameter " + arg)
@@ -237,6 +256,10 @@ def recv_msg_adsb(msghex):
                 lat, lon = adsb_get_pos(msg)
                 print "addr %x alt (Q=%d) %d lat %f lon %f CRC:%s" % \
                        (btoi(addr), qbit, alt, lat, lon, crc_status)
+
+                # XXX string value, really?
+                if crc_status == 'OK':
+                     craft.update(addr, (time.time(), alt, lat, lon))
             elif typ == 19:        # Airborne Velocity
                 # P3
                 print " DF17 CA5 Type 19 CRC:%s" % (crc_status,)
@@ -524,6 +547,21 @@ def fork_rtl_adsb(prog_path):
     # non-blocking reads (seen with strace). Magic.
     return os.fdopen(pipe_r, 'rb', 0)
 
+def write_out(path, now):
+    temp_path = path + '.temp'
+    fp = open(temp_path, 'w')
+
+    # A dictionary seems like the easiest thing to expand, should we need it.
+    jdict = dict()
+
+    jdict['now'] = now         # a float of UNIX seconds, but can be an int
+    jdict['nose'] = our_nose   # a float or int in degrees (not radians)
+    jdict['cb'] = craft.dump()
+
+    fp.write(json.dumps(jdict, indent=4))
+    fp.close()
+    os.rename(temp_path, path)
+
 def do(par):
 
     # it's not like we really need the pidfile under the Systemd
@@ -549,11 +587,12 @@ def do(par):
 
     drop_privileges('glie')
 
+    last = time.time()
     while 1:
         # XXX exit here if no more sockets or rtl_adsb pipe is down (EOF)
 
         # [(fd, ev)]
-        events = poller.poll()
+        events = poller.poll(FRAME*1000)
         for event in events:
             #if event[0] == lsock.fileno():
             #    (csock, caddr) = lsock.accept()
@@ -587,6 +626,11 @@ def do(par):
             else:
                 print >>sys.stderr, TAG+": polled unknown fd", fd
                 os.close(fd)
+        now = time.time()
+        if now >= last + FRAME:
+            # 5 minutes to catch anything with our poor receiption
+            craft.prune(5*60.0)
+            write_out(par.output_path, now)
 
 def main(args):
     try:
@@ -594,7 +638,7 @@ def main(args):
     except ParamError as e:
         print >>sys.stderr, TAG+": Error in arguments:", e
         print >>sys.stderr, "Usage:", TAG+" -g /dev/ttyUSB0 [-s 4800]"+\
-            " -r /usr/bin/rtl_adsb"
+            " -r /usr/bin/rtl_adsb [-o /tmp/glie-out.json]"
         return 1
 
     try:

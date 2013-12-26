@@ -21,7 +21,6 @@ class Target(object):
     def locadd(self, loc):
         tstamp = loc[0]
         x = 0
-        print "loc", loc
         while x < len(self.locv):
             tstamp_x = self.locv[x][0]
             # With timestamps being floats, a comparison for equal is not
@@ -50,6 +49,17 @@ class Target(object):
         if len(self.locv) == 0:  return None
         return self.locv[0]
 
+    def dump(self):
+        dump_locs = []
+        for loc in self.locv:
+            dump_locs.append({'ts': loc[0], 'alt': loc[1],
+                              'lat': loc[2], 'lon': loc[3]})
+        # No need to return our own address, since it's the same as our key
+        # in the craftbase. But we may want to dump some other attribute
+        # in the future, so we dump a dictionary with one element for now.
+        # return {'addr': self.addr, 'locv': dump_locs}
+        return {'locv': dump_locs}
+
 # List of all Target-s.
 class CraftBase(object):
 
@@ -65,8 +75,21 @@ class CraftBase(object):
             self.a[addr] = tgt
         tgt.locadd(loc)
 
-    def prune(self):
-        raise NotImplementedError
+    def prune(self, duration):
+        # :param duration: drop this many seconds in the past or earlier
+        toflush = []
+        for addr in self.a:
+            tgt = self.a[addr]
+            tgt.locprune(duration)
+            if tgt.loctop() is None:
+                toflush.append(addr)
+        for addr in toflush:
+            del self.a[addr]
 
     def dump(self):
-        raise NotImplementedError
+        # :returns: a dictionary of targets, each a dictionary too;
+        #           the latter can contain lists... of dictionaries.
+        ret = dict()
+        for addr in self.a:
+            ret[addr] = self.a[addr].dump()
+        return ret
