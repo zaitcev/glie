@@ -556,6 +556,10 @@ def write_out(path, now):
 
     jdict['now'] = now         # a float of UNIX seconds, but can be an int
     jdict['nose'] = our_nose   # a float or int in degrees (not radians)
+    if our_alt and our_lat and our_lon:
+        jdict['alt'] = our_alt # can be a float, but usually int in feet
+        jdict['lat'] = our_lat # south is negative
+        jdict['lon'] = our_lon # west is negative
     jdict['cb'] = craft.dump()
 
     fp.write(json.dumps(jdict, indent=4))
