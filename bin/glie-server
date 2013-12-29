@@ -7,6 +7,6 @@ if __name__ == '__main__':
     # conf_file, options = parse_options(sys.argv)
     # sys.exit(run_wsgi(conf_file, 'glie-server', **options))
     if len(sys.argv) != 2:
-        print >>sys.stderr, "Usage: glie-server file.conf"
+        print >>sys.stderr, "Usage: glie-server glie-server.conf"
         sys.exit(2)
     sys.exit(run_wsgi(sys.argv[1], 'glie-server'))

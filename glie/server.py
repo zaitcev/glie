@@ -7,11 +7,14 @@ import errno
 import io
 import math
 import png
+import sys
 import time
 
 import eventlet
 from eventlet import GreenPool, sleep, wsgi, listen
 from eventlet.green import socket
+
+from ConfigParser import ConfigParser, NoSectionError, NoOptionError
 
 from glie.utils import drop_privileges
 
@@ -40,14 +43,15 @@ class RestrictedGreenPool(GreenPool):
 #        #"Logs" the args to nowhere
 #        pass
 
-def run_wsgi(conf_file, app_section):
+class ConfigError(Exception):
+    pass
 
-    # It's pretty much inevitable that we'll need a configuration eventually.
-    # Leave a stub for now.
-    # conf = appconfig(conf_file, name=app_section)
-    ## P3
-    #conf = {'bind_port': 8080}
-    conf = {}
+def run_wsgi(conf_file, app_section):
+    try:
+        conf = loadconf(conf_file)
+    except ConfigError as e:
+        print >>sys.stderr, str(e)
+        return 1
 
     sock = get_socket(conf)
     drop_privileges(conf.get('user', 'glie'))
@@ -165,6 +169,25 @@ def draw_white_circle(c, x0, y0, r):
             c[x][y*3 + 1] = 255
             c[x][y*3 + 2] = 255
     return 
+
+def loadconf(conf_file):
+    section = 'DEFAULT'
+    cfgpr = ConfigParser()
+    try:
+        cfp = open(conf_file, 'r')
+    except IOError:
+        raise ConfigError("Unable to open `%s'" % conf_file)
+    try:
+        cfgpr.readfp(cfp)
+        ilist = cfgpr.items(section)
+    except NoSectionError:
+        raise ConfigError("Unable to read or find section `%s'" % section)
+    except NoOptionError as e:
+        raise ConfigError(str(e))
+    conf = dict()
+    for name, value in ilist:
+        conf[name] = value
+    return conf
 
 def get_socket(conf, default_port='80'):
     """Bind socket to bind ip:port in conf
