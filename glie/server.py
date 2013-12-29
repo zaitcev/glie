@@ -141,6 +141,10 @@ def refresh_canvas(width, height):
     """
     c = black_canvas(W, H)
     draw_white_circle(c, W/2, H/2, W/4)
+
+    # P3
+    draw_diamonds(c)
+
     return c
 
 def black_canvas(width, height):
@@ -165,10 +169,77 @@ def draw_white_circle(c, x0, y0, r):
         x = x0 + int(r * math.sin(phy))
         y = y0 + int(r * math.cos(phy))
         if 0 <= x < len(c[0])/3 and 0 <= y < len(c):
-            c[x][y*3 + 0] = 255
-            c[x][y*3 + 1] = 255
-            c[x][y*3 + 2] = 255
-    return 
+            c[y][x*3 + 0] = 255
+            c[y][x*3 + 1] = 255
+            c[y][x*3 + 2] = 255
+    return
+
+# fig_height = 14
+diamond_0_width = 7
+diamond_0_fig = [
+     [16] ,
+     [16] ,
+     [40] ,
+     [40] ,
+     [68] ,
+     [68] ,
+     [130] ,
+     [130] ,
+     [68] ,
+     [68] ,
+     [40] ,
+     [40] ,
+     [16] ,
+     [16]
+]
+
+# fig_height = 14
+diamond_1_width = 7
+diamond_1_fig = [
+     [16] ,
+     [16] ,
+     [40] ,
+     [40] ,
+     [68] ,
+     [68] ,
+     [130] ,
+     [130] ,
+     [68] ,
+     [124] ,
+     [56] ,
+     [56] ,
+     [16] ,
+     [16]
+]
+
+def draw_diamonds(c):
+    blt_sprite(c, 10, 10, diamond_0_fig, diamond_0_width)
+    blt_sprite(c, 30, 10, diamond_1_fig, diamond_1_width)
+
+def blt_sprite(c, x0, y0, sprite, sprite_width):
+    """
+    Draw a sprite, using our "byte-packed" format.
+
+    :param sprite: list of lists of bytes, each byte of 8 bits
+    """
+    y = 0
+    for ll in sprite:
+        x = 0
+        for byte in ll:
+            for n in range(8):
+                if x >= sprite_width:
+                    break
+                if byte & 128:
+                    color = (255, 255, 255)
+                else:
+                    color = (0, 0, 0)
+                byte <<= 1
+                rv, gv, bv = color
+                c[y0 + y][(x0 + x)*3 + 0] = rv
+                c[y0 + y][(x0 + x)*3 + 1] = gv
+                c[y0 + y][(x0 + x)*3 + 2] = bv
+                x += 1
+        y += 1
 
 def loadconf(conf_file):
     section = 'DEFAULT'
