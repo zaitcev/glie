@@ -21,6 +21,8 @@ from glie.utils import drop_privileges
 
 W = 500
 H = 500
+#R = 20  # nm, so the drawn circle R=10nm
+R = 40
 
 class RestrictedGreenPool(GreenPool):
     """
@@ -142,13 +144,13 @@ def refresh_canvas(width, height, environ):
     Return the display canvas as a list of iteratables for PNG dumping.
     XXX You do know that Python has 2-dimentional arrays, don't you?
     """
-    c = black_canvas(W, H)
-    draw_white_circle(c, W/2, H/2, W/4)
+    c = black_canvas(width, height)
+    draw_white_circle(c, width/2, height/2, width/4)
 
-    # P3
-    draw_diamonds(c)
+    ## P3
+    #draw_test_diamonds(c)
 
-    read_state(c, W, H, environ['glie.state_file'])
+    read_state(c, width, height, environ['glie.state_file'])
     return c
 
 def black_canvas(width, height):
@@ -177,8 +179,72 @@ def read_state(c, width, height, state_file):
 
     if 'alt' in state and 'lat' in state and 'lon' in state:
         draw_white_cross(c, width/2, height/2)
+        draw_targets(c, width, height, state)
     else:
         draw_red_X(c, width/2, height/2)
+
+def draw_targets(c, w, h, state):
+    lat0 = state['lat']
+    lon0 = state['lon']
+    craftbase = state['cb']  # a dict, keys are addresses
+    for addr in craftbase:
+        tgt = craftbase[addr]
+        locv = tgt['locv']   # a list, we rely on the order
+        # In theory, the purging inside glied gets rid of targets if their
+        # location lists shrink to nothing, but there's no harm in checking.
+        if len(locv) == 0:
+            continue
+        loc = locv[0]
+        trail = locv[1:]
+
+        draw_target_diamond(c, w, h, state['alt'], lat0, lon0, loc)
+
+        # Just a bunch of green dots for now. This is not awesome because
+        # the targets do not seem to transmit at regular intervals and so
+        # the density of dots does not correspond to the target's speed.
+        for tloc in trail:
+            y, x = loc_to_pix(h, w, lat0, lon0, tloc['lat'], tloc['lon'])
+            if (0 <= y < h) and (0 <= x < w):
+                color = (40, 255, 10)
+                cy = c[y]
+                cy[x*3 + 0] = color[0]
+                cy[x*3 + 1] = color[1]
+                cy[x*3 + 2] = color[2]
+
+def draw_target_diamond(c, w, h, alt0, lat0, lon0, loc):
+    """
+    :param c: canvas
+    :param w: width of canvas
+    :param h: height of canvas
+    :param alt0: our altitude in feet
+    :param lat0: our latitude in degrees
+    :param lon0: our longitude in degrees
+    :param loc: target location dictionary with 'alt', 'lat', and 'lon'
+    """
+    y1, x1 = loc_to_pix(h, w, lat0, lon0, loc['lat'], loc['lon'])
+    blt_sprite(c, w, h, x1 - diamond_0_ptx, y1 - diamond_0_pty,
+               diamond_0_fig, diamond_0_width, (255, 180, 0))
+
+def loc_to_pix(h, w, lat0, lon0, lat, lon):
+    """
+    :returns: tuple (y, x) for zero in upper left corner, integers
+    """
+
+    # Linear approximation works okay at the ranges of our application.
+    # Same goes for meridian not being a circle.
+    # equatorial circumference = 21638 nm
+    # meridian circumference = 21602 nm
+
+    dy = (lat - lat0) * 21602.0 / 360
+    dx = (lon - lon0) * 21638.0 / 360
+    dx *= math.cos(abs(lat0) * math.pi/180)
+
+    # R is not a radius of any scale circle, but half of picture width.
+
+    y = (dy / R) * -1.0 * (h/2) + h/2
+    x = (dx / R) * (w/2) + w/2
+
+    return (int(y), int(x))
 
 def draw_white_cross(c, x0, y0):
     color = (243, 243, 243)
@@ -222,6 +288,8 @@ def draw_white_circle(c, x0, y0, r):
 
 # 0: empty diamond
 # fig_height = 14
+diamond_0_ptx = 3
+diamond_0_pty = 6
 diamond_0_width = 7
 diamond_0_fig = [
      [16] ,
@@ -240,54 +308,61 @@ diamond_0_fig = [
      [16]
 ]
 
-# 1: bottom filled 2/5 diamond
-# fig_height = 14
-diamond_1_width = 7
-diamond_1_fig = [
-     [16] ,
-     [16] ,
-     [40] ,
-     [40] ,
-     [68] ,
-     [68] ,
-     [130] ,
-     [130] ,
-     [68] ,
-     [124] ,
-     [56] ,
-     [56] ,
-     [16] ,
-     [16]
-]
+## 1: bottom filled 2/5 diamond
+## fig_height = 14
+#diamond_1_width = 7
+#diamond_1_fig = [
+#     [16] ,
+#     [16] ,
+#     [40] ,
+#     [40] ,
+#     [68] ,
+#     [68] ,
+#     [130] ,
+#     [130] ,
+#     [68] ,
+#     [124] ,
+#     [56] ,
+#     [56] ,
+#     [16] ,
+#     [16]
+#]
 
-def draw_diamonds(c):
-    blt_sprite(c, 10, 10, diamond_0_fig, diamond_0_width)
-    blt_sprite(c, 30, 10, diamond_1_fig, diamond_1_width)
+#def draw_test_diamonds(c):
+#    blt_sprite(c, W, H, 10, 10, diamond_0_fig, diamond_0_width, (255,255,255))
+#    blt_sprite(c, W, H, 30, 10, diamond_1_fig, diamond_1_width, (255,255,255))
+#    blt_sprite(c, W, H, -2, 17, diamond_1_fig, diamond_1_width, (30,30,255))
+#    blt_sprite(c, W, H, 50, -3, diamond_0_fig, diamond_1_width, (30,30,255))
 
-def blt_sprite(c, x0, y0, sprite, sprite_width):
+def blt_sprite(c, w, h, x0, y0, sprite, sprite_width, color):
     """
-    Draw a sprite, using our "byte-packed" format.
+    Draw a sprite, using our "byte-packed" format. This is safe against
+    drawing outside of the canvas, and can draw clipped as appropriate.
 
     :param sprite: list of lists of bytes, each byte of 8 bits
     """
-    y = 0
+    dy = 0
     for ll in sprite:
-        x = 0
+        dx = 0
         for byte in ll:
             for n in range(8):
-                if x >= sprite_width:
+                if dx >= sprite_width:
                     break
                 if byte & 128:
-                    color = (255, 255, 255)
+                    set_color = color
                 else:
-                    color = (0, 0, 0)
+                    set_color = (0, 0, 0)
                 byte <<= 1
-                rv, gv, bv = color
-                c[y0 + y][(x0 + x)*3 + 0] = rv
-                c[y0 + y][(x0 + x)*3 + 1] = gv
-                c[y0 + y][(x0 + x)*3 + 2] = bv
-                x += 1
-        y += 1
+
+                if (0 <= y0 + dy < h) and (0 <= x0 + dx < w):
+                    rv, gv, bv = set_color
+                    cy = c[y0 + dy]
+                    cy[(x0 + dx)*3 + 0] = rv
+                    cy[(x0 + dx)*3 + 1] = gv
+                    cy[(x0 + dx)*3 + 2] = bv
+
+                dx += 1
+        dy += 1
 
 def loadconf(conf_file):
     section = 'DEFAULT'
