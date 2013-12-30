@@ -29,3 +29,4 @@ TODO:
   - dump all-relative positions in cb{} histories, or
   - save a number of our historic locations with timestamps
 * turn canvas into an object with height and width
+* red X if loc timestamp is out of date, too
