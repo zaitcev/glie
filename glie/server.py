@@ -5,6 +5,7 @@
 import array
 import errno
 import io
+import json
 import math
 import png
 import sys
@@ -67,11 +68,13 @@ def run_server(conf, sock):
 
     app = application
 
+    env = { 'glie.state_file': conf.get('state_file', '/tmp/glie-out.json') }
+
     max_clients = int(conf.get('max_clients', '1024'))
     pool = RestrictedGreenPool(size=max_clients)
     try:
         #wsgi.server(sock, app, log=NullLogger(), custom_pool=pool)
-        wsgi.server(sock, app, custom_pool=pool)
+        wsgi.server(sock, app, environ=env, custom_pool=pool)
     except socket.error as err:
         if err[0] != errno.EINVAL:
             raise
@@ -122,7 +125,7 @@ def do_root(environ, start_response):
     return ["Glie\r\n"]
 
 def do_display(environ, start_response):
-    canvas = refresh_canvas(W, H)
+    canvas = refresh_canvas(W, H, environ)
 
     fp = io.BytesIO()
     # b = fp.getvalue() -- specific method of BytesIO
@@ -134,7 +137,7 @@ def do_display(environ, start_response):
     start_response("200 OK", [('Content-type', 'image/png')])
     return fp
 
-def refresh_canvas(width, height):
+def refresh_canvas(width, height, environ):
     """
     Return the display canvas as a list of iteratables for PNG dumping.
     XXX You do know that Python has 2-dimentional arrays, don't you?
@@ -145,6 +148,7 @@ def refresh_canvas(width, height):
     # P3
     draw_diamonds(c)
 
+    read_state(c, W, H, environ['glie.state_file'])
     return c
 
 def black_canvas(width, height):
@@ -160,6 +164,48 @@ def black_canvas(width, height):
         c.append(r)
     return c
 
+def read_state(c, width, height, state_file):
+    """
+    The main function: read the state dump and update the canvas.
+
+    :param c: the canvas into which to render the situation
+    :param state_file: the filename of the state dump
+    """
+    sfp = open(state_file, 'r')
+    state = json.load(sfp)
+    sfp.close()
+
+    if 'alt' in state and 'lat' in state and 'lon' in state:
+        draw_white_cross(c, width/2, height/2)
+    else:
+        draw_red_X(c, width/2, height/2)
+
+def draw_white_cross(c, x0, y0):
+    color = (243, 243, 243)
+    cy = c[y0]
+    for i in xrange(40):
+        cy[(x0 + i - 20)*3 + 0] = color[0]
+        cy[(x0 + i - 20)*3 + 1] = color[1]
+        cy[(x0 + i - 20)*3 + 2] = color[2]
+    for i in xrange(40):
+        cy = c[y0 + i - 20]
+        cy[x0*3 + 0] = color[0]
+        cy[x0*3 + 1] = color[1]
+        cy[x0*3 + 2] = color[2]
+
+def draw_red_X(c, x0, y0):
+    color = (255, 5, 5)
+    for i in xrange(40):
+        cy = c[y0 + i - 20]
+        cy[(x0 + i - 20)*3 + 0] = color[0]
+        cy[(x0 + i - 20)*3 + 1] = color[1]
+        cy[(x0 + i - 20)*3 + 2] = color[2]
+    for i in xrange(40):
+        cy = c[y0 + 20 - i]
+        cy[(x0 + i - 20)*3 + 0] = color[0]
+        cy[(x0 + i - 20)*3 + 1] = color[1]
+        cy[(x0 + i - 20)*3 + 2] = color[2]
+
 def draw_white_circle(c, x0, y0, r):
     phy = 0
     # We place dots at each 2 degrees because a denser line looks awful
@@ -174,6 +220,7 @@ def draw_white_circle(c, x0, y0, r):
             c[y][x*3 + 2] = 255
     return
 
+# 0: empty diamond
 # fig_height = 14
 diamond_0_width = 7
 diamond_0_fig = [
@@ -193,6 +240,7 @@ diamond_0_fig = [
      [16]
 ]
 
+# 1: bottom filled 2/5 diamond
 # fig_height = 14
 diamond_1_width = 7
 diamond_1_fig = [
