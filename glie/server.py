@@ -132,38 +132,40 @@ def do_display(environ, start_response):
     fp = io.BytesIO()
     # b = fp.getvalue() -- specific method of BytesIO
 
-    writer = png.Writer(W, H)
-    writer.write(fp, canvas)
+    writer = png.Writer(canvas.w, canvas.h)
+    writer.write(fp, canvas.c)
 
     fp.seek(0)
     start_response("200 OK", [('Content-type', 'image/png')])
     return fp
+
+class Canvas(object):
+    def __init__(self, width, height):
+        c = list()
+        for i in xrange(height):
+            row = list()
+            for j in xrange(width):
+                row.append(0)
+                row.append(0)
+                row.append(0)
+            r = array.array('H')
+            r.fromlist(row)
+            c.append(r)
+        self.c = c
+        self.w = width
+        self.h = height
 
 def refresh_canvas(width, height, environ):
     """
     Return the display canvas as a list of iteratables for PNG dumping.
     XXX You do know that Python has 2-dimentional arrays, don't you?
     """
-    c = black_canvas(width, height)
+    c = Canvas(width, height)
     draw_white_circle(c, width/2, height/2, width/4)
 
-    ## P3
     #draw_test_diamonds(c)
 
     read_state(c, width, height, environ['glie.state_file'])
-    return c
-
-def black_canvas(width, height):
-    c = list()
-    for i in xrange(height):
-        row = list()
-        for j in xrange(width):
-            row.append(0)
-            row.append(0)
-            row.append(0)
-        r = array.array('H')
-        r.fromlist(row)
-        c.append(r)
     return c
 
 def read_state(c, width, height, state_file):
@@ -179,11 +181,13 @@ def read_state(c, width, height, state_file):
 
     if 'alt' in state and 'lat' in state and 'lon' in state:
         draw_white_cross(c, width/2, height/2)
-        draw_targets(c, width, height, state)
+        draw_targets(c, state)
     else:
         draw_red_X(c, width/2, height/2)
 
-def draw_targets(c, w, h, state):
+def draw_targets(canvas, state):
+    w = canvas.w
+    h = canvas.h
     lat0 = state['lat']
     lon0 = state['lon']
     craftbase = state['cb']  # a dict, keys are addresses
@@ -204,7 +208,7 @@ def draw_targets(c, w, h, state):
             y, x = loc_to_pix(h, w, lat0, lon0, tloc['lat'], tloc['lon'])
             if (0 <= y < h) and (0 <= x < w):
                 color = (40, 255, 10)
-                cy = c[y]
+                cy = canvas.c[y]
                 cy[x*3 + 0] = color[0]
                 cy[x*3 + 1] = color[1]
                 cy[x*3 + 2] = color[2]
@@ -214,13 +218,11 @@ def draw_targets(c, w, h, state):
             color = (255, 180, 0)
         else:
             color = (40, 255, 10)
-        draw_target_diamond(c, w, h, state['alt'], lat0, lon0, loc, color)
+        draw_target_diamond(canvas, state['alt'], lat0, lon0, loc, color)
 
-def draw_target_diamond(c, w, h, alt0, lat0, lon0, loc, color):
+def draw_target_diamond(canvas, alt0, lat0, lon0, loc, color):
     """
-    :param c: canvas
-    :param w: width of canvas
-    :param h: height of canvas
+    :param canvas: canvas into which to draw
     :param alt0: our altitude in feet
     :param lat0: our latitude in degrees
     :param lon0: our longitude in degrees
@@ -244,9 +246,9 @@ def draw_target_diamond(c, w, h, alt0, lat0, lon0, loc, color):
         diamond_fig = diamond_5_fig
         diamond_width = diamond_5_width
 
-    y1, x1 = loc_to_pix(h, w, lat0, lon0, loc['lat'], loc['lon'])
+    y1, x1 = loc_to_pix(canvas.h, canvas.w, lat0, lon0, loc['lat'], loc['lon'])
 
-    blt_sprite(c, w, h, x1 - diamond_ptx, y1 - diamond_pty,
+    blt_sprite(canvas, x1 - diamond_ptx, y1 - diamond_pty,
                diamond_fig, diamond_width, color)
 
 def loc_to_pix(h, w, lat0, lon0, lat, lon):
@@ -270,33 +272,34 @@ def loc_to_pix(h, w, lat0, lon0, lat, lon):
 
     return (int(y), int(x))
 
-def draw_white_cross(c, x0, y0):
+def draw_white_cross(canvas, x0, y0):
     color = (243, 243, 243)
-    cy = c[y0]
+    cy = canvas.c[y0]
     for i in xrange(40):
         cy[(x0 + i - 20)*3 + 0] = color[0]
         cy[(x0 + i - 20)*3 + 1] = color[1]
         cy[(x0 + i - 20)*3 + 2] = color[2]
     for i in xrange(40):
-        cy = c[y0 + i - 20]
+        cy = canvas.c[y0 + i - 20]
         cy[x0*3 + 0] = color[0]
         cy[x0*3 + 1] = color[1]
         cy[x0*3 + 2] = color[2]
 
-def draw_red_X(c, x0, y0):
+def draw_red_X(canvas, x0, y0):
     color = (255, 5, 5)
     for i in xrange(40):
-        cy = c[y0 + i - 20]
+        cy = canvas.c[y0 + i - 20]
         cy[(x0 + i - 20)*3 + 0] = color[0]
         cy[(x0 + i - 20)*3 + 1] = color[1]
         cy[(x0 + i - 20)*3 + 2] = color[2]
     for i in xrange(40):
-        cy = c[y0 + 20 - i]
+        cy = canvas.c[y0 + 20 - i]
         cy[(x0 + i - 20)*3 + 0] = color[0]
         cy[(x0 + i - 20)*3 + 1] = color[1]
         cy[(x0 + i - 20)*3 + 2] = color[2]
 
-def draw_white_circle(c, x0, y0, r):
+def draw_white_circle(canvas, x0, y0, r):
+    c = canvas.c
     phy = 0
     # We place dots at each 2 degrees because a denser line looks awful
     # without a proper anti-aliasing.
@@ -305,9 +308,10 @@ def draw_white_circle(c, x0, y0, r):
         x = x0 + int(r * math.sin(phy))
         y = y0 + int(r * math.cos(phy))
         if 0 <= x < len(c[0])/3 and 0 <= y < len(c):
-            c[y][x*3 + 0] = 255
-            c[y][x*3 + 1] = 255
-            c[y][x*3 + 2] = 255
+            cy = c[y]
+            cy[x*3 + 0] = 255
+            cy[x*3 + 1] = 255
+            cy[x*3 + 2] = 255
     return
 
 # All diamonds have a common center point.
@@ -325,7 +329,7 @@ diamond_1_fig = [
 diamond_2_width = 7
 diamond_2_fig = [
      [16] , [16] , [40] , [40] , [68] , [68] , [130] ,
-     [130] , [124] , [124] , [56] , [56] , [16] , [16]
+     [130] , [124] , [124] , [56] , [40] , [16] , [16]
 ]
 
 # Coalt
@@ -350,13 +354,13 @@ diamond_5_fig = [
 ]
 
 #def draw_test_diamonds(c):
-#    blt_sprite(c, W, H, 10, 10, diamond_1_fig, diamond_1_width, (255,255,255))
-#    blt_sprite(c, W, H, 30, 10, diamond_2_fig, diamond_2_width, (255,255,255))
-#    blt_sprite(c, W, H, 50, 10, diamond_3_fig, diamond_3_width, (255,255,255))
-#    blt_sprite(c, W, H, 70, 10, diamond_4_fig, diamond_4_width, (255,255,255))
-#    blt_sprite(c, W, H, 90, 10, diamond_5_fig, diamond_5_width, (255,255,255))
+#    blt_sprite(c, 10, 10, diamond_1_fig, diamond_1_width, (255,255,255))
+#    blt_sprite(c, 30, 10, diamond_2_fig, diamond_2_width, (255,255,255))
+#    blt_sprite(c, 50, 10, diamond_3_fig, diamond_3_width, (255,255,255))
+#    blt_sprite(c, 70, 10, diamond_4_fig, diamond_4_width, (255,255,255))
+#    blt_sprite(c, 90, 10, diamond_5_fig, diamond_5_width, (255,255,255))
 
-def blt_sprite(c, w, h, x0, y0, sprite, sprite_width, color):
+def blt_sprite(canvas, x0, y0, sprite, sprite_width, color):
     """
     Draw a sprite, using our "byte-packed" format. This is safe against
     drawing outside of the canvas, and can draw clipped as appropriate.
@@ -376,9 +380,9 @@ def blt_sprite(c, w, h, x0, y0, sprite, sprite_width, color):
                     set_color = (0, 0, 0)
                 byte <<= 1
 
-                if (0 <= y0 + dy < h) and (0 <= x0 + dx < w):
+                if (0 <= y0 + dy < canvas.h) and (0 <= x0 + dx < canvas.w):
                     rv, gv, bv = set_color
-                    cy = c[y0 + dy]
+                    cy = canvas.c[y0 + dy]
                     cy[(x0 + dx)*3 + 0] = rv
                     cy[(x0 + dx)*3 + 1] = gv
                     cy[(x0 + dx)*3 + 2] = bv
