@@ -197,8 +197,6 @@ def draw_targets(c, w, h, state):
         loc = locv[0]
         trail = locv[1:]
 
-        draw_target_diamond(c, w, h, state['alt'], lat0, lon0, loc)
-
         # Just a bunch of green dots for now. This is not awesome because
         # the targets do not seem to transmit at regular intervals and so
         # the density of dots does not correspond to the target's speed.
@@ -211,7 +209,14 @@ def draw_targets(c, w, h, state):
                 cy[x*3 + 1] = color[1]
                 cy[x*3 + 2] = color[2]
 
-def draw_target_diamond(c, w, h, alt0, lat0, lon0, loc):
+        # Drawing a ghost with the same diamond for simplicity.
+        if float(loc['ts']) >= float(state['now']) - 5.0:
+            color = (255, 180, 0)
+        else:
+            color = (40, 255, 10)
+        draw_target_diamond(c, w, h, state['alt'], lat0, lon0, loc, color)
+
+def draw_target_diamond(c, w, h, alt0, lat0, lon0, loc, color):
     """
     :param c: canvas
     :param w: width of canvas
@@ -221,9 +226,28 @@ def draw_target_diamond(c, w, h, alt0, lat0, lon0, loc):
     :param lon0: our longitude in degrees
     :param loc: target location dictionary with 'alt', 'lat', and 'lon'
     """
+
+    alt = loc['alt']
+    if alt0 - 1100 <= alt <= alt0 + 1100:
+        diamond_fig = diamond_3_fig
+        diamond_width = diamond_3_width
+    elif alt0 - 3000 <= alt < alt0:
+        diamond_fig = diamond_2_fig
+        diamond_width = diamond_2_width
+    elif alt < alt0:
+        diamond_fig = diamond_1_fig
+        diamond_width = diamond_1_width
+    elif alt0 < alt <= alt0 + 3000:
+        diamond_fig = diamond_4_fig
+        diamond_width = diamond_4_width
+    else:
+        diamond_fig = diamond_5_fig
+        diamond_width = diamond_5_width
+
     y1, x1 = loc_to_pix(h, w, lat0, lon0, loc['lat'], loc['lon'])
-    blt_sprite(c, w, h, x1 - diamond_0_ptx, y1 - diamond_0_pty,
-               diamond_0_fig, diamond_0_width, (255, 180, 0))
+
+    blt_sprite(c, w, h, x1 - diamond_ptx, y1 - diamond_pty,
+               diamond_fig, diamond_width, color)
 
 def loc_to_pix(h, w, lat0, lon0, lat, lon):
     """
@@ -286,53 +310,51 @@ def draw_white_circle(c, x0, y0, r):
             c[y][x*3 + 2] = 255
     return
 
-# 0: empty diamond
-# fig_height = 14
-diamond_0_ptx = 3
-diamond_0_pty = 6
-diamond_0_width = 7
-diamond_0_fig = [
-     [16] ,
-     [16] ,
-     [40] ,
-     [40] ,
-     [68] ,
-     [68] ,
-     [130] ,
-     [130] ,
-     [68] ,
-     [68] ,
-     [40] ,
-     [40] ,
-     [16] ,
-     [16]
+# All diamonds have a common center point.
+diamond_ptx = 3
+diamond_pty = 6
+
+# Much lower
+diamond_1_width = 7
+diamond_1_fig = [
+     [16] , [16] , [40] , [40] , [68] , [68] , [130] ,
+     [130] , [68] , [68] , [56] , [56] , [16] , [16]
 ]
 
-## 1: bottom filled 2/5 diamond
-## fig_height = 14
-#diamond_1_width = 7
-#diamond_1_fig = [
-#     [16] ,
-#     [16] ,
-#     [40] ,
-#     [40] ,
-#     [68] ,
-#     [68] ,
-#     [130] ,
-#     [130] ,
-#     [68] ,
-#     [124] ,
-#     [56] ,
-#     [56] ,
-#     [16] ,
-#     [16]
-#]
+# Below
+diamond_2_width = 7
+diamond_2_fig = [
+     [16] , [16] , [40] , [40] , [68] , [68] , [130] ,
+     [130] , [124] , [124] , [56] , [56] , [16] , [16]
+]
+
+# Coalt
+diamond_3_width = 7
+diamond_3_fig = [
+     [16] , [16] , [40] , [56] , [124] , [124] , [254] ,
+     [254] , [124] , [124] , [56] , [40] , [16] , [16]
+]
+
+# Above
+diamond_4_width = 7
+diamond_4_fig = [
+     [16] , [16] , [40] , [56] , [124] , [124] , [130] ,
+     [130] , [68] , [68] , [40] , [40] , [16] , [16]
+]
+
+# Much higher
+diamond_5_width = 7
+diamond_5_fig = [
+     [16] , [16] , [56] , [56] , [68] , [68] , [130] ,
+     [130] , [68] , [68] , [40] , [40] , [16] , [16]
+]
 
 #def draw_test_diamonds(c):
-#    blt_sprite(c, W, H, 10, 10, diamond_0_fig, diamond_0_width, (255,255,255))
-#    blt_sprite(c, W, H, 30, 10, diamond_1_fig, diamond_1_width, (255,255,255))
-#    blt_sprite(c, W, H, -2, 17, diamond_1_fig, diamond_1_width, (30,30,255))
-#    blt_sprite(c, W, H, 50, -3, diamond_0_fig, diamond_1_width, (30,30,255))
+#    blt_sprite(c, W, H, 10, 10, diamond_1_fig, diamond_1_width, (255,255,255))
+#    blt_sprite(c, W, H, 30, 10, diamond_2_fig, diamond_2_width, (255,255,255))
+#    blt_sprite(c, W, H, 50, 10, diamond_3_fig, diamond_3_width, (255,255,255))
+#    blt_sprite(c, W, H, 70, 10, diamond_4_fig, diamond_4_width, (255,255,255))
+#    blt_sprite(c, W, H, 90, 10, diamond_5_fig, diamond_5_width, (255,255,255))
 
 def blt_sprite(c, w, h, x0, y0, sprite, sprite_width, color):
     """
