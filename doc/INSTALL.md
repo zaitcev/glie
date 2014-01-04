@@ -4,13 +4,13 @@ How to install and run Glie
 First, you need a computer with Linux. Windows or OSX may work, but
 using those is left to excercise of the reader. Also, you need a source
 of position information and an ADS-B receiver. Try a generic GPS with
-NMEA output. It's hard to be more specific due to built-in variety
-of NMEA standard. Problems are likely; please report them to Glie
+NMEA output (such as BU-353). It's hard to be more specific due to built-in
+variety of NMEA standard. Problems are likely; please report them to Glie
 developers.
 
 For ADS-B, you need something that provides a general Extended Squitter
 stream. Its messages look like this: "*8dabd3c758c036b338d471661ef6;".
-The easiest way to obtain that is by an SDR receiver from Realtek (RTL)
+The easiest way to obtain that is to use an SDR receiver from Realtek (RTL)
 and run rtl_adsb or dump1090. See the "RTL-SDR" Wiki:
  http://sdr.osmocom.org/trac/wiki/rtl-sdr
 
@@ -39,3 +39,5 @@ To run in-place, change to the top of Glie tree and do this:
 # PYTHONPATH=$(pwd) bin/glied -g /dev/ttyUSB0 \
    -r /home/zaitcev/radio/rtl_adsb.sh -s 9600
 # PYTHONPATH=$(pwd) bin/glie-server /dev/null
+
+The source distribution supplies a script tools/run.sh, which may help.
