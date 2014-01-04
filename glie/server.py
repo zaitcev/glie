@@ -194,7 +194,11 @@ def read_state(c, width, height, state_file):
     :param c: the canvas into which to render the situation
     :param state_file: the filename of the state dump
     """
-    sfp = open(state_file, 'r')
+    try:
+        sfp = open(state_file, 'r')
+    except IOError:
+        draw_red_X(c, width/2, height/2)
+        return
     state = json.load(sfp)
     sfp.close()
 
