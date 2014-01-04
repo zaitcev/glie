@@ -11,9 +11,7 @@ import png
 import sys
 import time
 
-import eventlet
-from eventlet import GreenPool, sleep, wsgi, listen
-from eventlet.green import socket
+from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 
 from ConfigParser import ConfigParser, NoSectionError, NoOptionError
 
@@ -23,21 +21,6 @@ W = 500
 H = 500
 #R = 20  # nm, so the drawn circle R=10nm
 R = 40
-
-class RestrictedGreenPool(GreenPool):
-    """
-    Works the same as GreenPool, but if the size is specified as one, then the
-    spawn_n() method will invoke waitall() before returning to prevent the
-    caller from doing any other work (like calling accept()).
-    """
-    def __init__(self, size=1024):
-        super(RestrictedGreenPool, self).__init__(size=size)
-        self._rgp_do_wait = (size == 1)
-
-    def spawn_n(self, *args, **kwargs):
-        super(RestrictedGreenPool, self).spawn_n(*args, **kwargs)
-        if self._rgp_do_wait:
-            self.waitall()
 
 #class NullLogger():
 #    """A no-op logger for eventlet wsgi."""
@@ -49,38 +32,28 @@ class RestrictedGreenPool(GreenPool):
 class ConfigError(Exception):
     pass
 
-def run_wsgi(conf_file, app_section):
+def run_wrapper(conf_file, app_section):
     try:
         conf = loadconf(conf_file, app_section)
     except ConfigError as e:
         print >>sys.stderr, str(e)
         return 1
 
-    sock = get_socket(conf)
-    drop_privileges(conf.get('user', 'glie'))
+    server_address = (conf.get('bind_host', '0.0.0.0'),
+                      int(conf.get('bind_port', '80')))
 
-    run_server(conf, sock)
-    return 0
+    username = conf.get('user', 'glie')
+    state_file = conf.get('state_file', '/tmp/glie-out.json')
+    # max_clients = int(conf.get('max_clients', '1024'))
+    # backlog = int(conf.get('backlog', '4096'))
 
-# This can be called directly, or after os.fork(), which we don't do yet.
-def run_server(conf, sock):
+    # sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    # if hasattr(socket, 'TCP_KEEPIDLE'):
+    #     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 600)
 
-    # eventlet.hubs.use_hub('select')
-    eventlet.patcher.monkey_patch(all=False, socket=True)
-
-    app = application
-
-    env = { 'glie.state_file': conf.get('state_file', '/tmp/glie-out.json') }
-
-    max_clients = int(conf.get('max_clients', '1024'))
-    pool = RestrictedGreenPool(size=max_clients)
-    try:
-        #wsgi.server(sock, app, log=NullLogger(), custom_pool=pool)
-        wsgi.server(sock, app, environ=env, custom_pool=pool)
-    except socket.error as err:
-        if err[0] != errno.EINVAL:
-            raise
-    pool.waitall()
+    httpd = Server(server_address, Handler,
+                   username=username, state_file=state_file)
+    httpd.serve_forever()
 
 class AppError(Exception):
     pass
@@ -138,6 +111,52 @@ def do_display(environ, start_response):
     fp.seek(0)
     start_response("200 OK", [('Content-type', 'image/png')])
     return fp
+
+class Server(HTTPServer):
+    allow_reuse_address = 1
+
+    def __init__(self, server_address, RequestHandlerClass, **kwargs):
+        self.username = kwargs['username']
+        self.state_file = kwargs['state_file']
+        del kwargs['username']
+        del kwargs['state_file']
+        HTTPServer.__init__(self, server_address, RequestHandlerClass, **kwargs)
+
+    def server_activate(self):
+        HTTPServer.server_activate(self)
+        drop_privileges(self.username)
+
+class Handler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        # We emulate WSGI in case we ever decide to go back.
+
+        resp = [500, "Internal Error", {'Content-Type': "text/plain"}]
+
+        def start_response(_status, _headers):
+            _status_list = _status.split(' ', 1)
+            resp[0] = int(_status_list[0])
+            if len(_status_list) > 1:
+                resp[1] = _status_list[1]
+            else:
+                resp[1] = None
+            resp[2] = _headers
+
+        environ = { 'REQUEST_METHOD': 'GET', 'PATH_INFO': self.path,
+                    'glie.state_file': self.server.state_file }
+
+        body = application(environ, start_response)
+
+        status, message, headers = resp
+        if message:
+            self.send_response(status, message)
+        else:
+            self.send_response(status)
+        for header in headers:
+            self.send_header(header[0], header[1])
+        self.end_headers()
+        for chunk in body:
+            self.wfile.write(chunk)
 
 class Canvas(object):
     def __init__(self, width, height):
@@ -407,41 +426,6 @@ def loadconf(conf_file, section):
     for name, value in ilist:
         conf[name] = value
     return conf
-
-def get_socket(conf, default_port='80'):
-    """Bind socket to bind ip:port in conf
-
-    :param conf: Configuration dict to read settings from
-    :param default_port: port to use if not specified in conf
-
-    :returns : a socket object as returned from socket.listen
-    """
-    bind_addr = (conf.get('bind_host', '0.0.0.0'),
-                 int(conf.get('bind_port', default_port)))
-    address_family = [addr[0] for addr in socket.getaddrinfo(
-        bind_addr[0], bind_addr[1], socket.AF_UNSPEC, socket.SOCK_STREAM)
-        if addr[0] in (socket.AF_INET, socket.AF_INET6)][0]
-    sock = None
-    bind_timeout = int(conf.get('bind_timeout', 30))
-    retry_until = time.time() + bind_timeout
-    while not sock and time.time() < retry_until:
-        try:
-            sock = listen(bind_addr, backlog=int(conf.get('backlog', '4096')),
-                          family=address_family)
-        except socket.error as err:
-            if err.args[0] != errno.EADDRINUSE:
-                raise
-            sleep(0.1)
-    if not sock:
-        raise Exception(_('Could not bind to %s:%s '
-                          'after trying for %s seconds') % (
-                              bind_addr[0], bind_addr[1], bind_timeout))
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # in my experience, sockets can hang around forever without keepalive
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-    if hasattr(socket, 'TCP_KEEPIDLE'):
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 600)
-    return sock
 
 def safestr(u):
     if isinstance(u, unicode):
