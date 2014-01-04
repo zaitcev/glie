@@ -9,4 +9,7 @@ if __name__ == '__main__':
     if len(sys.argv) != 2:
         print >>sys.stderr, "Usage: glie-server glie-server.conf"
         sys.exit(2)
-    sys.exit(run_wsgi(sys.argv[1], 'glie-server'))
+    # Normally the section name would be something like [glie-server],
+    # but we use [DEFAULT] because we don't have a family of servers with
+    # common parameters.
+    sys.exit(run_wsgi(sys.argv[1], 'DEFAULT'))

@@ -51,7 +51,7 @@ class ConfigError(Exception):
 
 def run_wsgi(conf_file, app_section):
     try:
-        conf = loadconf(conf_file)
+        conf = loadconf(conf_file, app_section)
     except ConfigError as e:
         print >>sys.stderr, str(e)
         return 1
@@ -390,8 +390,7 @@ def blt_sprite(canvas, x0, y0, sprite, sprite_width, color):
                 dx += 1
         dy += 1
 
-def loadconf(conf_file):
-    section = 'DEFAULT'
+def loadconf(conf_file, section):
     cfgpr = ConfigParser()
     try:
         cfp = open(conf_file, 'r')
