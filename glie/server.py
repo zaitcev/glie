@@ -107,7 +107,7 @@ def do_root(environ, start_response):
         raise AppGetError(method)
 
     start_response("200 OK", [('Content-type', 'text/plain')])
-    return ["Glie\r\n"]
+    return [safestr("Glie\r\n")]
 
 def do_display(environ, start_response):
     canvas = refresh_canvas(W, H, environ)
@@ -442,10 +442,11 @@ def loadconf(conf_file, section):
     return conf
 
 def safestr(u):
-    ## The Python 2 idiom:
-    #if isinstance(u, unicode):
-    #    return u.encode('utf-8')
-    # In Python 3 "compatible" code, we have to wiggle (always evaluates true):
-    if not isinstance(u, str):
-        return u.encode('utf-8')
+    try:
+        if isinstance(u, unicode):
+            return u.encode('utf-8')
+    except NameError:
+        # Python 3
+        if isinstance(u, str):
+            return u.encode('utf-8')
     return u
