@@ -363,7 +363,7 @@ def rtl_adsb_parser_find_start(buf):
     x = buf.find(b'*')
     if x == -1:
         return -1
-    if x != 0 and p[x-1] != '\n':  # ok for '\r\n' line terminators as well
+    if x != 0 and buf[x-1] != b'\n':  # ok for '\r\n' line terminators as well
         return -1
     return x
 
