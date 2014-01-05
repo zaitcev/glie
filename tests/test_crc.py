@@ -1,6 +1,8 @@
 #
 # Run this simply with nosetests.
 
+from __future__ import print_function
+
 import testtools
 import glie.crc
 
@@ -11,10 +13,10 @@ class TestCRC(testtools.TestCase):
         def test(msg, poly, known):
             fcs = glie.crc.crc(msg, poly)
             if fcs == known:
-                print 'poly', poly, 'message', msg, 'CRC', fcs, ': OK'
+                print('poly', poly, 'message', msg, 'CRC', fcs, ': OK')
                 return True
-            print 'poly', poly, 'message', msg, \
-                'computed CRC', fcs, 'known CRC', known, ': FAIL'
+            print('poly', poly, 'message', msg,
+                  'computed CRC', fcs, 'known CRC', known, ': FAIL')
             return False
 
         result = True

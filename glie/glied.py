@@ -1,6 +1,8 @@
 # glied
 # Copyright (c) 2013 Pete Zaitcev <zaitcev@yahoo.com>
 
+from __future__ import print_function
+
 import json
 import os
 import select
@@ -94,7 +96,7 @@ class Param:
 #def write_pidfile(fname):
 #    try:
 #        fd = os.open(fname, os.O_WRONLY|os.O_CREAT, stat.S_IRUSR|stat.S_IWUSR)
-#    except OSError, e:
+#    except OSError as e:
 #        raise AppError(str(e))
 #    flockb = struct.pack('hhllhh', fcntl.F_WRLCK, 0, 0, 0, 0, 0)
 #    try:
@@ -226,7 +228,7 @@ def skb_pull(mbufs, size):
 def recv_msg_adsb(msghex):
     msglen = len(msghex)
     if msglen != 14 and msglen != 28:
-        print >>sys.stderr, TAG+": bad message length", msglen
+        print(TAG+": bad message length", msglen, file=sys.stderr)
         return
 
     msg = scatter_bits(msghex)
@@ -254,25 +256,25 @@ def recv_msg_adsb(msghex):
                 if alt is None:
                     alt = -1
                 lat, lon = adsb_get_pos(msg)
-                print "addr %x alt (Q=%d) %d lat %f lon %f CRC:%s" % \
-                       (btoi(addr), qbit, alt, lat, lon, crc_status)
+                print("addr %x alt (Q=%d) %d lat %f lon %f CRC:%s" % \
+                       (btoi(addr), qbit, alt, lat, lon, crc_status))
 
                 # XXX string value, really?
                 if crc_status == 'OK':
                      craft.update(addr, (time.time(), alt, lat, lon))
             elif typ == 19:        # Airborne Velocity
                 # P3
-                print " DF17 CA5 Type 19 CRC:%s" % (crc_status,)
+                print(" DF17 CA5 Type 19 CRC:%s" % (crc_status,))
             else:
                 # P3
-                print " DF17 CA5 Type", typ, "CRC:%s" % (crc_status,)
+                print(" DF17 CA5 Type", typ, "CRC:%s" % (crc_status,))
         else:
             # P3
-            print " DF17 CA", btoi(ca), "CRC:%s" % (crc_status,)
+            print(" DF17 CA", btoi(ca), "CRC:%s" % (crc_status,))
     else:
         # P3
-        print " DF", df, btoi(df)
-    #print "message", msghex
+        print(" DF", df, btoi(df))
+    #print("message", msghex)
 
 # See Doc.9871 C.2.7 (Fig.C-1) at p247
 def adsb_get_alt(msg):
@@ -358,8 +360,7 @@ def recv_event_adsb_parse(conn):
     return ""
 
 def rtl_adsb_parser_find_start(buf):
-    p = str(buf)
-    x = p.find("*")
+    x = buf.find(b'*')
     if x == -1:
         return -1
     if x != 0 and p[x-1] != '\n':  # ok for '\r\n' line terminators as well
@@ -367,8 +368,7 @@ def rtl_adsb_parser_find_start(buf):
     return x
 
 def rtl_adsb_parser_find_end(buf):
-    p = str(buf)
-    return p.find(";")
+    return buf.find(b';')
 
 class AdsbConnection(Connection):
 
@@ -398,14 +398,14 @@ class AdsbConnection(Connection):
         self.mbufs.append(mbuf)
         self.rcvd += len(mbuf)
         ## P3
-        #print "mbuf %d rcvd %d" % (len(mbuf), self.rcvd)
+        #print("mbuf %d rcvd %d" % (len(mbuf), self.rcvd))
 
         while 1:
             buf = recv_event_adsb_parse(self)
             if buf is None:
                 break
             if len(buf) != 0:
-                recv_msg_adsb(str(buf))
+                recv_msg_adsb(buf.decode('ascii',errors='replace'))
 
 # event NMEA
 
@@ -471,18 +471,18 @@ class NmeaConnection(Connection):
             if len(self.mbufs) == 0:
                 break
             mbuf = self.mbufs[-1]
-            nlx = mbuf.find('\n')
+            nlx = mbuf.find(b'\n')
             if nlx == -1:
                 break
             line_length = self.rcvd - len(mbuf) + nlx + 1
             buf = skb_pull(self.mbufs, line_length)
             self.rcvd -= len(buf)
             ## P3
-            #print "nmea line", buf
-            recv_msg_nmea(str(buf))
+            #print("nmea line", buf)
+            recv_msg_nmea(buf.decode('ascii',errors='replace'))
 
         ## P3
-        #print our_alt, our_lat, our_lon
+        #print(our_alt, our_lat, our_lon)
 
 # main()
 
@@ -607,7 +607,7 @@ def do(par):
             #    continue
 
             fd = event[0]
-            if connections.has_key(fd):
+            if fd in connections:
                 conn = connections[fd]
                 if event[1] & select.POLLNVAL:
                     poller.unregister(fd)
@@ -628,7 +628,7 @@ def do(par):
                     poller.unregister(fd)
                     connections[fd] = None
             else:
-                print >>sys.stderr, TAG+": polled unknown fd", fd
+                print(TAG+": polled unknown fd", fd, file=sys.stderr)
                 os.close(fd)
         now = time.time()
         if now >= last + FRAME:
@@ -640,15 +640,15 @@ def main(args):
     try:
         par = Param(args)
     except ParamError as e:
-        print >>sys.stderr, TAG+": Error in arguments:", e
-        print >>sys.stderr, "Usage:", TAG+" -g /dev/ttyUSB0 [-s 4800]"+\
-            " -r /usr/bin/rtl_adsb [-o /tmp/glie-out.json]"
+        print(TAG+": Error in arguments:", e, file=sys.stderr)
+        print("Usage:", TAG+" -g /dev/ttyUSB0 [-s 4800]"+
+            " -r /usr/bin/rtl_adsb [-o /tmp/glie-out.json]", file=sys.stderr)
         return 1
 
     try:
         do(par)
-    except AppError, e:
-        print >>sys.stderr, TAG+":", e
+    except AppError as e:
+        print(TAG+":", e, file=sys.stderr)
         return 1
     # except AppTraceback as e:  -- NO
     except KeyboardInterrupt:

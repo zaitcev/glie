@@ -2,18 +2,28 @@
 # Copyright (c) 2010-2012 OpenStack Foundation
 # Copyright (c) 2013 Pete Zaitcev <zaitcev@yahoo.com>
 
+from __future__ import print_function
+
 import array
 import errno
 import io
 import json
 import math
-import png
+import png  # the dj11's pypng
 import sys
 import time
 
-from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
+#from six.moves.BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
+# <--- "No module named 'six.moves.BaseHTTPServer'; six.moves is not a package"
+try:
+    from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
+except ImportError:
+    from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from ConfigParser import ConfigParser, NoSectionError, NoOptionError
+try:
+    from ConfigParser import ConfigParser, NoSectionError, NoOptionError
+except ImportError:
+    from configparser import ConfigParser, NoSectionError, NoOptionError
 
 from glie.utils import drop_privileges
 
@@ -36,7 +46,7 @@ def run_wrapper(conf_file, app_section):
     try:
         conf = loadconf(conf_file, app_section)
     except ConfigError as e:
-        print >>sys.stderr, str(e)
+        print(str(e), file=sys.stderr)
         return 1
 
     server_address = (conf.get('bind_host', '0.0.0.0'),
@@ -79,17 +89,17 @@ def application(environ, start_response):
 
     except AppError as e:
         start_response("500 Internal Error", [('Content-type', 'text/plain')])
-        return [safestr(unicode(e)), "\r\n"]
+        return [safestr(str(e)), "\r\n"]
     except App400Error as e:
         start_response("400 Bad Request", [('Content-type', 'text/plain')])
-        return ["400 Bad Request: %s\r\n" % safestr(unicode(e))]
+        return [safestr("400 Bad Request: %s\r\n" % str(e))]
     except App404Error as e:
         start_response("404 Not Found", [('Content-type', 'text/plain')])
-        return [safestr(unicode(e)), "\r\n"]
+        return [safestr(str(e)), "\r\n"]
     except AppGetError as e:
         start_response("405 Method Not Allowed",
                        [('Content-type', 'text/plain'), ('Allow', 'GET')])
-        return ["405 Method %s not allowed\r\n" % safestr(unicode(e))]
+        return [safestr("405 Method `%s' not allowed\r\n" % str(e))]
 
 def do_root(environ, start_response):
     method = environ['REQUEST_METHOD']
@@ -161,9 +171,9 @@ class Handler(BaseHTTPRequestHandler):
 class Canvas(object):
     def __init__(self, width, height):
         c = list()
-        for i in xrange(height):
+        for i in range(height):
             row = list()
-            for j in xrange(width):
+            for j in range(width):
                 row.append(0)
                 row.append(0)
                 row.append(0)
@@ -180,7 +190,7 @@ def refresh_canvas(width, height, environ):
     XXX You do know that Python has 2-dimentional arrays, don't you?
     """
     c = Canvas(width, height)
-    draw_white_circle(c, width/2, height/2, width/4)
+    draw_white_circle(c, width//2, height//2, width//4)
 
     #draw_test_diamonds(c)
 
@@ -197,16 +207,16 @@ def read_state(c, width, height, state_file):
     try:
         sfp = open(state_file, 'r')
     except IOError:
-        draw_red_X(c, width/2, height/2)
+        draw_red_X(c, width//2, height//2)
         return
     state = json.load(sfp)
     sfp.close()
 
     if 'alt' in state and 'lat' in state and 'lon' in state:
-        draw_white_cross(c, width/2, height/2)
+        draw_white_cross(c, width//2, height//2)
         draw_targets(c, state)
     else:
-        draw_red_X(c, width/2, height/2)
+        draw_red_X(c, width//2, height//2)
 
 def draw_targets(canvas, state):
     w = canvas.w
@@ -298,11 +308,11 @@ def loc_to_pix(h, w, lat0, lon0, lat, lon):
 def draw_white_cross(canvas, x0, y0):
     color = (243, 243, 243)
     cy = canvas.c[y0]
-    for i in xrange(40):
+    for i in range(40):
         cy[(x0 + i - 20)*3 + 0] = color[0]
         cy[(x0 + i - 20)*3 + 1] = color[1]
         cy[(x0 + i - 20)*3 + 2] = color[2]
-    for i in xrange(40):
+    for i in range(40):
         cy = canvas.c[y0 + i - 20]
         cy[x0*3 + 0] = color[0]
         cy[x0*3 + 1] = color[1]
@@ -310,12 +320,12 @@ def draw_white_cross(canvas, x0, y0):
 
 def draw_red_X(canvas, x0, y0):
     color = (255, 5, 5)
-    for i in xrange(40):
+    for i in range(40):
         cy = canvas.c[y0 + i - 20]
         cy[(x0 + i - 20)*3 + 0] = color[0]
         cy[(x0 + i - 20)*3 + 1] = color[1]
         cy[(x0 + i - 20)*3 + 2] = color[2]
-    for i in xrange(40):
+    for i in range(40):
         cy = canvas.c[y0 + 20 - i]
         cy[(x0 + i - 20)*3 + 0] = color[0]
         cy[(x0 + i - 20)*3 + 1] = color[1]
@@ -326,11 +336,11 @@ def draw_white_circle(canvas, x0, y0, r):
     phy = 0
     # We place dots at each 2 degrees because a denser line looks awful
     # without a proper anti-aliasing.
-    for i in xrange(180):
+    for i in range(180):
         phy = (float(i)/180.0) * (math.pi*2)
         x = x0 + int(r * math.sin(phy))
         y = y0 + int(r * math.cos(phy))
-        if 0 <= x < len(c[0])/3 and 0 <= y < len(c):
+        if 0 <= x < len(c[0])//3 and 0 <= y < len(c):
             cy = c[y]
             cy[x*3 + 0] = 255
             cy[x*3 + 1] = 255
@@ -432,6 +442,10 @@ def loadconf(conf_file, section):
     return conf
 
 def safestr(u):
-    if isinstance(u, unicode):
+    ## The Python 2 idiom:
+    #if isinstance(u, unicode):
+    #    return u.encode('utf-8')
+    # In Python 3 "compatible" code, we have to wiggle (always evaluates true):
+    if not isinstance(u, str):
         return u.encode('utf-8')
     return u

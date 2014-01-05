@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
+
 import sys
 from glie.server import run_wrapper
 
@@ -7,7 +9,7 @@ if __name__ == '__main__':
     # conf_file, options = parse_options(sys.argv)
     # sys.exit(run_wsgi(conf_file, 'glie-server', **options))
     if len(sys.argv) != 2:
-        print >>sys.stderr, "Usage: glie-server glie-server.conf"
+        print("Usage: glie-server glie-server.conf", file=sys.stderr)
         sys.exit(2)
     # Normally the section name would be something like [glie-server],
     # but we use [DEFAULT] because we don't have a family of servers with

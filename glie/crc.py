@@ -33,7 +33,7 @@ def crc(msgstr, poly):
     msgstr = msgstr[plength-1:] + '0'*(plength-1)
     ## P3
     #print 'initial rem', rem, 'rest', msgstr
-    for i in xrange(0,len(msgstr)):
+    for i in range(0,len(msgstr)):
         accum = rem + msgstr[i:i+1]
         ## P3
         #print 'acc', accum

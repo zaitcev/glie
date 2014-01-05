@@ -11,7 +11,7 @@ from glie import AppError
 
 ## pi = 3.14159265359
 #NZ = 15
-#for NL in xrange(2, 4*NZ):
+#for NL in range(2, 4*NZ):
 #    lat = 180.0/math.pi * math.acos(
 #                           math.sqrt((1.0 - math.cos(math.pi/(2*NZ)))/
 #                                     (1.0 - math.cos((2*math.pi)/NL))))
@@ -83,7 +83,7 @@ def NL(lat):
     # Do abs() outside... maybe?
     if lat < 0:
         return 0
-    for n in xrange(59,2,-1):
+    for n in range(59,2,-1):
         if zonetab[n] >= lat:
             return n
     return 1
