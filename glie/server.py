@@ -63,7 +63,10 @@ def run_wrapper(conf_file, app_section):
 
     httpd = Server(server_address, Handler,
                    username=username, state_file=state_file)
-    httpd.serve_forever()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        return 130
 
 class AppError(Exception):
     pass
