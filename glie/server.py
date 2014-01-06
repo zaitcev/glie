@@ -207,16 +207,22 @@ def read_state(c, width, height, state_file):
     try:
         sfp = open(state_file, 'r')
     except IOError:
-        draw_red_X(c, width//2, height//2)
+        color = (255, 5, 5)  # warning red
+        draw_warning_X(c, width//2, height//2, color)
         return
     state = json.load(sfp)
     sfp.close()
 
     if 'alt' in state and 'lat' in state and 'lon' in state:
-        draw_white_cross(c, width//2, height//2)
+        if float(state['now']) >= time.time() - 3.0:
+            draw_white_cross(c, width//2, height//2)
+        else:
+            color = (5, 20, 255)  # warning blue
+            draw_warning_X(c, width//2, height//2, color)
         draw_targets(c, state)
     else:
-        draw_red_X(c, width//2, height//2)
+        color = (255, 5, 5)  # warning red
+        draw_warning_X(c, width//2, height//2, color)
 
 def draw_targets(canvas, state):
     w = canvas.w
@@ -318,8 +324,7 @@ def draw_white_cross(canvas, x0, y0):
         cy[x0*3 + 1] = color[1]
         cy[x0*3 + 2] = color[2]
 
-def draw_red_X(canvas, x0, y0):
-    color = (255, 5, 5)
+def draw_warning_X(canvas, x0, y0, color):
     for i in range(40):
         cy = canvas.c[y0 + i - 20]
         cy[(x0 + i - 20)*3 + 0] = color[0]

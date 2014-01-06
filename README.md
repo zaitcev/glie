@@ -28,4 +28,3 @@ TODO:
 * display relative motion by either
   - dump all-relative positions in cb{} histories, or
   - save a number of our historic locations with timestamps
-* red X if loc timestamp is out of date, too
