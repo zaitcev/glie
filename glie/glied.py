@@ -635,6 +635,7 @@ def do(par):
             # 5 minutes to catch anything with our poor receiption
             craft.prune(5*60.0)
             write_out(par.output_path, now)
+            last = now
 
 def main(args):
     try:
