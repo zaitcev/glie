@@ -330,7 +330,7 @@ def recv_event_adsb_parse(conn):
         # Discard whole buffer
         buf = skb_pull(conn.mbufs, 16)
         conn.rcvd -= len(buf)
-        return ""
+        return b""
     # Discard until the packet start
     if x != 0:
         buf = skb_pull(conn.mbufs, x)
@@ -357,13 +357,13 @@ def recv_event_adsb_parse(conn):
 
     buf = skb_pull(conn.mbufs, 31)
     conn.rcvd -= len(buf)
-    return ""
+    return b""
 
 def rtl_adsb_parser_find_start(buf):
     x = buf.find(b'*')
     if x == -1:
         return -1
-    if x != 0 and buf[x-1] != b'\n':  # ok for '\r\n' line terminators as well
+    if x != 0 and buf[x-1] != bytearray(b'\n')[0]:
         return -1
     return x
 
