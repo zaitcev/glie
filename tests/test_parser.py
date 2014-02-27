@@ -1,7 +1,7 @@
 #
 # Run this simply with nosetests.
 
-import testtools
+import unittest
 import glie.glied
 
 class FakeConn(object):
@@ -9,7 +9,7 @@ class FakeConn(object):
         self.mbufs = mbufs
         self.rcvd = sum([len(mbuf) for mbuf in mbufs])
 
-class TestParser(testtools.TestCase):
+class TestParser(unittest.TestCase):
 
     def test_no1(self):
         conn = FakeConn([b'*',b'8d',b'a6',b'ee',b'56',b'58',b'a4',b'87',b'2d',

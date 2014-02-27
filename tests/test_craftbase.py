@@ -1,10 +1,10 @@
 #
 # Run this simply with nosetests.
 
-import testtools
+import unittest
 import glie.craftbase
 
-class TestCraftBase(testtools.TestCase):
+class TestCraftBase(unittest.TestCase):
 
     def test_target_basic(self):
         addr = "000100010001000100010001"

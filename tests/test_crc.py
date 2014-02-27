@@ -3,10 +3,10 @@
 
 from __future__ import print_function
 
-import testtools
+import unittest
 import glie.crc
 
-class TestCRC(testtools.TestCase):
+class TestCRC(unittest.TestCase):
 
     def test_crc(self):
 

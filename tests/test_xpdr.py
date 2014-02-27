@@ -1,11 +1,11 @@
 #
 # Run this simply with nosetests.
 
-import testtools
+import unittest
 import glie.xpdr
 import tools.xponder_gentab
 
-class TestTransponder(testtools.TestCase):
+class TestTransponder(unittest.TestCase):
 
     def test_lookup(self):
         alt = -1200
