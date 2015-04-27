@@ -164,6 +164,20 @@ class Connection:
     def hup_proc(self):  # TODO
         raise NotImplementedError
 
+# Try to form a text line from Connection. This works by looking at the last
+# available mbuf, so it must be called every time a new buffer is received.
+def recv_event_readline(conn):
+    if len(conn.mbufs) == 0:
+        return None
+    mbuf = conn.mbufs[-1]
+    nlx = mbuf.find(b'\n')
+    if nlx == -1:
+        return None
+    line_length = conn.rcvd - len(mbuf) + nlx + 1
+    buf = skb_pull(conn.mbufs, line_length)
+    conn.rcvd -= len(buf)
+    return buf
+
 # skb
 # XXX split off into a module
 
@@ -225,13 +239,21 @@ def skb_pull(mbufs, size):
 
 # event ADS-B
 
-def recv_msg_adsb(msghex):
-    msglen = len(msghex)
+def recv_msg_adsb(linestr):
+    x = linestr.find('*')
+    if x != 0:
+        return
+    x = linestr.find(';')
+    if x == -1:
+        print(TAG+": bad message format", file=sys.stderr)
+        return
+
+    msglen = x-1
     if msglen != 14 and msglen != 28:
         print(TAG+": bad message length", msglen, file=sys.stderr)
         return
 
-    msg = scatter_bits(msghex)
+    msg = scatter_bits(linestr[1:x])
 
     df = msg[0:5]
     if df == '10001':      # DF17
@@ -313,68 +335,10 @@ def adsb_get_pos(msg):
     lon = glie.cpr.cpr_decode_lon(msg[53], msg[71:88], lat, our_lon)
     return (lat, lon)
 
-# Okay, this seems a little ad-hoc, but:
-#  returns:
-#    None - no more data to form any kind of packet
-#    ""   - may be more data
-#    buf  - parsed something and there may be more data
-# Not sure how to code this pattern in an elegant way. Nested loops?
-def recv_event_adsb_parse(conn):
-
-    # Try to find a 56-bit packet first.
-    if conn.rcvd < 16:
-        return None
-    buf = skb_pull_copy(conn.mbufs, 16)
-    x = rtl_adsb_parser_find_start(buf)
-    if x == -1:
-        # Discard whole buffer
-        buf = skb_pull(conn.mbufs, 16)
-        conn.rcvd -= len(buf)
-        return b""
-    # Discard until the packet start
-    if x != 0:
-        buf = skb_pull(conn.mbufs, x)
-        conn.rcvd -= len(buf)
-
-    if conn.rcvd < 16:
-        return None
-    buf = skb_pull_copy(conn.mbufs, 16)
-    x = rtl_adsb_parser_find_end(buf)
-    if x != -1:
-        buf = skb_pull(conn.mbufs, x)
-        conn.rcvd -= len(buf)
-        return buf[1:]
-
-    # Well, 112 bits it is, then.
-    if conn.rcvd < 31:
-        return None
-    buf = skb_pull_copy(conn.mbufs, 31)
-    x = rtl_adsb_parser_find_end(buf)
-    if x != -1:
-        buf = skb_pull(conn.mbufs, x)
-        conn.rcvd -= len(buf)
-        return buf[1:]
-
-    buf = skb_pull(conn.mbufs, 31)
-    conn.rcvd -= len(buf)
-    return b""
-
-def rtl_adsb_parser_find_start(buf):
-    x = buf.find(b'*')
-    if x == -1:
-        return -1
-    if x != 0 and buf[x-1] != bytearray(b'\n')[0]:
-        return -1
-    return x
-
-def rtl_adsb_parser_find_end(buf):
-    return buf.find(b';')
-
 class AdsbConnection(Connection):
 
     # Receive an ADS-B message, using the low-level framing of "*xxxxxxxx;".
     def recv_event(self):
-        conn = self
         # Always receive the socket data, or else the poll would loop.
 
         # Except that real sockets do not support .read(), thank you Guido
@@ -401,11 +365,10 @@ class AdsbConnection(Connection):
         #print("mbuf %d rcvd %d" % (len(mbuf), self.rcvd))
 
         while 1:
-            buf = recv_event_adsb_parse(self)
+            buf = recv_event_readline(self)
             if buf is None:
                 break
-            if len(buf) != 0:
-                recv_msg_adsb(buf.decode('ascii',errors='replace'))
+            recv_msg_adsb(buf.decode('ascii',errors='replace'))
 
 # event NMEA
 
@@ -467,16 +430,9 @@ class NmeaConnection(Connection):
         self.rcvd += len(mbuf)
 
         while 1:
-            # This is correct if we assume that one pull splits an mbuf once.
-            if len(self.mbufs) == 0:
+            buf = recv_event_readline(self)
+            if buf is None:
                 break
-            mbuf = self.mbufs[-1]
-            nlx = mbuf.find(b'\n')
-            if nlx == -1:
-                break
-            line_length = self.rcvd - len(mbuf) + nlx + 1
-            buf = skb_pull(self.mbufs, line_length)
-            self.rcvd -= len(buf)
             ## P3
             #print("nmea line", buf)
             recv_msg_nmea(buf.decode('ascii',errors='replace'))
