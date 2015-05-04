@@ -1,5 +1,5 @@
 # glied
-# Copyright (c) 2013 Pete Zaitcev <zaitcev@yahoo.com>
+# Copyright (c) 2013-2015 Pete Zaitcev <zaitcev@yahoo.com>
 
 from __future__ import print_function
 
@@ -45,12 +45,14 @@ class ParamError(Exception):
 class Param:
     def __init__(self, argv):
         skip = 0;  # Do skip=1 for full argv.
+        #: Input mode, 0: 1090ES, 1: UAT
+        self.input_mode = 0
         #: GPS device path (no default, but commonly /dev/ttyS0 or /dev/gps)
         self.gps_dev_path = None
         #: GPS tty baud rate, default 4800
         self.gps_dev_speed = 4800
-        #: Path to the rtl_adsb executible
-        self.rtl_adsb_path = "/usr/bin/rtl_adsb"
+        #: Path to the rtl_adsb or ruat compatible executible, no default
+        self.rtl_adsb_path = None
         #: Output file path
         self.output_path = "/tmp/glie-out.json"
         speed = 0
@@ -78,6 +80,8 @@ class Param:
                         raise ParamError("Parameter -s needs an argument")
                     speed = argv[i+1]
                     skip = 1;
+                elif arg == "-u":
+                    self.input_mode = 1
                 else:
                     raise ParamError("Unknown parameter " + arg)
             else:
@@ -237,7 +241,7 @@ def skb_pull(mbufs, size):
        mbufs[0] = mbuf[x:]
     return v
 
-# event ADS-B
+# event ADS-B at 1090ES
 
 def recv_msg_adsb(linestr):
     x = linestr.find('*')
@@ -369,6 +373,53 @@ class AdsbConnection(Connection):
             if buf is None:
                 break
             recv_msg_adsb(buf.decode('ascii',errors='replace'))
+
+# event ADS-B at UAT
+
+def recv_msg_uat(linestr):
+    if linestr.find('-') == 0:
+        x = linestr.find(';')
+        if x == -1:
+            print(TAG+": bad a-message format", file=sys.stderr)
+            return
+        msglen = x-1
+        if msglen != 18*2 and msglen != 34*2:
+            print(TAG+": bad a-message length", msglen, file=sys.stderr)
+            return
+    elif linestr.find('+') == 0:
+        x = linestr.find(';')
+        if x == -1:
+            print(TAG+": bad u-message format", file=sys.stderr)
+            return
+        msglen = x-1
+        if msglen != 72*6*2:
+            print(TAG+": bad u-message length", msglen, file=sys.stderr)
+            return
+    else:
+        # Various status messages are discarded here.
+        return
+
+    # msg = scatter_bits(linestr[1:x])
+    # P3
+    print("uat data", linestr[1:x])
+
+class UatConnection(Connection):
+
+    # Receive an ADS-B message, using the low-level framing of "-xxxxxxxx;".
+    def recv_event(self):
+        mbuf = os.read(self.sock.fileno(), 4096)
+        if mbuf == None:
+            raise AppError("Received None from UAT")
+        if len(mbuf) == 0:
+            return
+        self.mbufs.append(mbuf)
+        self.rcvd += len(mbuf)
+
+        while 1:
+            buf = recv_event_readline(self)
+            if buf is None:
+                break
+            recv_msg_uat(buf.decode('ascii',errors='replace'))
 
 # event NMEA
 
@@ -541,7 +592,10 @@ def do(par):
     poller.register(asock.fileno(), select.POLLIN|select.POLLERR)
 
     asock = fork_rtl_adsb(par.rtl_adsb_path)
-    conn = AdsbConnection(asock)
+    if par.input_mode:
+        conn = UatConnection(asock)
+    else:
+        conn = AdsbConnection(asock)
     connections[asock.fileno()] = conn
     poller.register(asock.fileno(), select.POLLIN|select.POLLERR)
 
@@ -598,7 +652,7 @@ def main(args):
         par = Param(args)
     except ParamError as e:
         print(TAG+": Error in arguments:", e, file=sys.stderr)
-        print("Usage:", TAG+" -g /dev/ttyUSB0 [-s 4800]"+
+        print("Usage:", TAG+" [-u] -g /dev/ttyUSB0 [-s 4800]"+
             " -r /usr/bin/rtl_adsb [-o /tmp/glie-out.json]", file=sys.stderr)
         return 1
 
